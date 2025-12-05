@@ -37,6 +37,9 @@ body,
 	background-color: #2e2e2e !important;
 	color: #fff !important;
 }
+.o_main_navbar .o-dropdown-item.dropdown-item.o-navigable {
+	background-color: #252525 !important;
+}
 /* Inputs */
 input,
 textarea,
