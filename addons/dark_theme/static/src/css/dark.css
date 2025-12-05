@@ -33,6 +33,10 @@ body,
 	color: #fff !important;
 }
 
+.o_web_client > .o_action_manager > .o_action > .o_control_panel {
+	background-color: #2e2e2e !important;
+	color: #fff !important;
+}
 /* Inputs */
 input,
 textarea,
