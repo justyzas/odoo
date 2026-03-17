@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <template id="custom_external_layout_standard_footer"
+              inherit_id="web.external_layout_standard">
+
+        <xpath expr="//div[contains(@class, 'o_footer')]" position="replace">
+            <div class="o_footer o_standard_footer o_company_#{company.id}_layout">
+                <style>
+                    .invoice-custom-footer {
+                        width: 100%;
+                        border-top: 1px solid #999;
+                        padding-top: 8px;
+                        font-size: 10px;
+                        color: #444;
+                    }
+                    .invoice-custom-footer table {
+                        width: 100%;
+                        border-collapse: collapse;
+                    }
+                    .invoice-custom-footer td {
+                        width: 33.33%;
+                        vertical-align: top;
+                        padding-right: 12px;
+                    }
+                    .invoice-custom-footer td:last-child {
+                        padding-right: 0;
+                    }
+                    .invoice-custom-footer .text-right {
+                        text-align: right;
+                    }
+                    .invoice-custom-footer .text-center {
+                        text-align: center;
+                    }
+                </style>
+
+                <!-- Apply custom footer only on invoice/account.move reports -->
+                <t t-if="doc_model == 'account.move'">
+                    <div class="invoice-custom-footer">
+                        <table>
+                            <tr>
+                                <td>
+                                    <div t-if="company.invoice_footer_col_1"
+                                         t-esc="company.invoice_footer_col_1"/>
+                                </td>
+                                <td class="text-center">
+                                    <div t-if="company.invoice_footer_col_2"
+                                         t-esc="company.invoice_footer_col_2"/>
+                                </td>
+                                <td class="text-right">
+                                    <div t-if="company.invoice_footer_col_3"
+                                         t-esc="company.invoice_footer_col_3"/>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </t>
+
+                <!-- Keep a simple fallback for non-invoice reports -->
+                <t t-else="">
+                    <div class="text-center" style="font-size: 10px; color: #666;">
+                        <span t-if="company.phone" t-esc="company.phone"/>
+                        <t t-if="company.phone and company.email"> | </t>
+                        <span t-if="company.email" t-esc="company.email"/>
+                        <t t-if="(company.phone or company.email) and company.website"> | </t>
+                        <span t-if="company.website" t-esc="company.website"/>
+                    </div>
+                </t>
+            </div>
+        </xpath>
+
+    </template>
+
+</odoo>
