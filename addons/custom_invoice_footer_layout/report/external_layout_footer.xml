@@ -16,25 +16,23 @@
         <!-- Remove document title heading -->
         <xpath expr="//h2[@t-out='layout_document_title']" position="replace"/>
 
-        <xpath expr="//div[contains(@t-attf-class, 'footer')]" position="replace">
-            <div t-attf-class="footer o_company_#{company.id}_layout">
-                <table width="100%" style="border-collapse: collapse; table-layout: fixed; border-top: 1px solid #dee2e6; padding-top: 8px;">
-                    <tr>
-                        <td width="33%" style="vertical-align: top; text-align: left;">
-                            <span t-if="company.invoice_footer_col_1"
-                                  t-esc="company.invoice_footer_col_1"/>
-                        </td>
-                        <td width="34%" style="vertical-align: top; text-align: center;">
-                            <span t-if="company.invoice_footer_col_2"
-                                  t-esc="company.invoice_footer_col_2"/>
-                        </td>
-                        <td width="33%" style="vertical-align: top; text-align: right;">
-                            <span t-if="company.invoice_footer_col_3"
-                                  t-esc="company.invoice_footer_col_3"/>
-                        </td>
-                    </tr>
-                </table>
-            </div>
+        <xpath expr="//div[hasclass('o_footer_content')]" position="replace">
+            <table width="100%" style="border-collapse: collapse; table-layout: fixed; border-top: 1px solid #dee2e6; padding-top: 8px;">
+                <tr>
+                    <td width="33%" style="vertical-align: top; text-align: left;">
+                        <span t-if="company.invoice_footer_col_1"
+                              t-esc="company.invoice_footer_col_1"/>
+                    </td>
+                    <td width="34%" style="vertical-align: top; text-align: center;">
+                        <span t-if="company.invoice_footer_col_2"
+                              t-esc="company.invoice_footer_col_2"/>
+                    </td>
+                    <td width="33%" style="vertical-align: top; text-align: right;">
+                        <span t-if="company.invoice_footer_col_3"
+                              t-esc="company.invoice_footer_col_3"/>
+                    </td>
+                </tr>
+            </table>
         </xpath>
 
     </template>
