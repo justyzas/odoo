@@ -18,36 +18,22 @@
 
         <xpath expr="//div[contains(@class, 'o_footer')]" position="replace">
             <div class="o_footer o_standard_footer o_company_#{company.id}_layout">
-                <!-- Apply custom footer only on invoice/account.move reports -->
-                <t t-if="doc_model == 'account.move'">
-                    <table width="100%" style="border-collapse: collapse; table-layout: fixed;">
-                        <tr>
-                            <td width="33%" style="vertical-align: top; text-align: left;">
-                                <span t-if="company.invoice_footer_col_1"
-                                      t-esc="company.invoice_footer_col_1"/>
-                            </td>
-                            <td width="34%" style="vertical-align: top; text-align: center;">
-                                <span t-if="company.invoice_footer_col_2"
-                                      t-esc="company.invoice_footer_col_2"/>
-                            </td>
-                            <td width="33%" style="vertical-align: top; text-align: right;">
-                                <span t-if="company.invoice_footer_col_3"
-                                      t-esc="company.invoice_footer_col_3"/>
-                            </td>
-                        </tr>
-                    </table>
-                </t>
-
-                <!-- Keep a simple fallback for non-invoice reports -->
-                <t t-else="">
-                    <div class="text-center" style="font-size: 10px; color: #666;">
-                        <span t-if="company.phone" t-esc="company.phone"/>
-                        <t t-if="company.phone and company.email"> | </t>
-                        <span t-if="company.email" t-esc="company.email"/>
-                        <t t-if="(company.phone or company.email) and company.website"> | </t>
-                        <span t-if="company.website" t-esc="company.website"/>
-                    </div>
-                </t>
+                <table width="100%" style="border-collapse: collapse; table-layout: fixed;">
+                    <tr>
+                        <td width="33%" style="vertical-align: top; text-align: left;">
+                            <span t-if="company.invoice_footer_col_1"
+                                  t-esc="company.invoice_footer_col_1"/>
+                        </td>
+                        <td width="34%" style="vertical-align: top; text-align: center;">
+                            <span t-if="company.invoice_footer_col_2"
+                                  t-esc="company.invoice_footer_col_2"/>
+                        </td>
+                        <td width="33%" style="vertical-align: top; text-align: right;">
+                            <span t-if="company.invoice_footer_col_3"
+                                  t-esc="company.invoice_footer_col_3"/>
+                        </td>
+                    </tr>
+                </table>
             </div>
         </xpath>
 
