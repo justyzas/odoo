@@ -63,20 +63,6 @@
 	</div>
 	<!-- Footer -->
 	<div t-attf-class="footer o_company_#{company.id}_layout {{report_type != 'pdf' and 'mt-auto'}}">
-                <!-- <t t-call="custom_invoice_footer_layout.custom_external_layout_standard_footer" /> -->
-
-		<div class="o_footer_content d-flex border-top pt-2">
-			<div class="text-end text-muted">
-
-                <!-- <div class="flex-grow-1 me-2 text-start" t-field="company.report_footer"/> -->
-                <t t-call="custom_invoice_footer_layout.custom_external_layout_standard_footer" />
-				<div t-if="report_type == 'pdf' and display_name_in_footer" t-out="o.name">
-					(document name)
-				</div>
-				<div t-if="report_type == 'pdf'" class="text-nowrap">
-					Page <span class="page"/> / <span class="topage"/>
-				</div>
-			</div>
-		</div>
+		<t t-call="custom_invoice_footer_layout.custom_footer_columns"/>
 	</div>
 </t>
