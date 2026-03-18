@@ -40,17 +40,17 @@
     </template>
 
     <template id="custom_footer_columns">
-        <table width="100%" style="border-collapse: collapse; table-layout: fixed; border-top: 1px solid #dee2e6; padding-top: 8px;">
+        <table width="100%" style="table-layout: fixed; border-top: 1px solid #dee2e6;">
             <tr>
-                <td width="33%" style="vertical-align: top; text-align: left;">
+                <td width="33%" style="vertical-align: top; text-align: left; padding-top: 6px;">
                     <span t-if="company.invoice_footer_col_1"
                           t-out="company.invoice_footer_col_1"/>
                 </td>
-                <td width="34%" style="vertical-align: top; text-align: center;">
+                <td width="34%" style="vertical-align: top; text-align: center; padding-top: 6px;">
                     <span t-if="company.invoice_footer_col_2"
                           t-out="company.invoice_footer_col_2"/>
                 </td>
-                <td width="33%" style="vertical-align: top; text-align: right;">
+                <td width="33%" style="vertical-align: top; text-align: right; padding-top: 6px;">
                     <span t-if="company.invoice_footer_col_3"
                           t-out="company.invoice_footer_col_3"/>
                 </td>
