@@ -18,7 +18,7 @@
 
         <xpath expr="//div[contains(@t-attf-class, 'footer') and contains(@t-attf-class, 'o_company_')]" position="replace">
             <div t-attf-class="footer o_company_#{company.id}_layout {{report_type != 'pdf' and 'mt-auto'}}">
-                <table width="100%" style="border-collapse: collapse; border: none; border-top: 2px solid black; table-layout: fixed; border-top: 1px solid #dee2e6; padding-top: 8px;">
+                <table width="100%" style="border-collapse: collapse; border: none; border-style:none; border-top: 2px solid black; table-layout: fixed; border-top: 1px solid #dee2e6; padding-top: 8px;">
                     <tr>
                         <td width="33%" style="vertical-align: top; text-align: left; padding-top: 8px;">
                             <span t-if="company.invoice_footer_col_1"
