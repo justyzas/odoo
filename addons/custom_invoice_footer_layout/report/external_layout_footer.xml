@@ -19,46 +19,32 @@
         <xpath expr="//div[contains(@class, 'o_footer')]" position="replace">
             <div class="o_footer o_standard_footer o_company_#{company.id}_layout">
                 <style>
-
-                    .invoice-custom-footer table {
+                    .invoice-custom-footer {
+                        display: flex;
+                        justify-content: space-between;
                         width: 100%;
-                        border-collapse: collapse;
                     }
-                    .invoice-custom-footer td {
-                        width: 33.33%;
+                    .invoice-custom-footer .col {
+                        flex: 1;
                         vertical-align: top;
-                        padding-right: 12px;
                     }
-                    .invoice-custom-footer td:last-child {
-                        padding-right: 0;
-                    }
-                    .invoice-custom-footer .text-right {
-                        text-align: right;
-                    }
-                    .invoice-custom-footer .text-center {
+                    .invoice-custom-footer .col:nth-child(2) {
                         text-align: center;
+                    }
+                    .invoice-custom-footer .col:last-child {
+                        text-align: right;
                     }
                 </style>
 
                 <!-- Apply custom footer only on invoice/account.move reports -->
                 <t t-if="doc_model == 'account.move'">
                     <div class="invoice-custom-footer">
-                        <table>
-                            <tr>
-                                <td>
-                                    <div t-if="company.invoice_footer_col_1"
-                                         t-esc="company.invoice_footer_col_1"/>
-                                </td>
-                                <td class="text-center">
-                                    <div t-if="company.invoice_footer_col_2"
-                                         t-esc="company.invoice_footer_col_2"/>
-                                </td>
-                                <td class="text-right">
-                                    <div t-if="company.invoice_footer_col_3"
-                                         t-esc="company.invoice_footer_col_3"/>
-                                </td>
-                            </tr>
-                        </table>
+                        <div class="col" t-if="company.invoice_footer_col_1"
+                             t-esc="company.invoice_footer_col_1"/>
+                        <div class="col" t-if="company.invoice_footer_col_2"
+                             t-esc="company.invoice_footer_col_2"/>
+                        <div class="col" t-if="company.invoice_footer_col_3"
+                             t-esc="company.invoice_footer_col_3"/>
                     </div>
                 </t>
 
