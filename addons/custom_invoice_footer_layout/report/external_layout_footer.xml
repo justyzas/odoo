@@ -4,16 +4,19 @@
     <template id="custom_external_layout_standard_footer"
               inherit_id="web.external_layout_standard">
 
+        <!-- Remove company logo -->
+        <xpath expr="//img[contains(@class, 'o_company_logo_small')]" position="replace"/>
+
+        <!-- Remove seller address / company details block -->
+        <xpath expr="//div[@name='company_address']" position="replace"/>
+
+        <!-- Remove customer address block -->
+        <xpath expr="//t[@t-call='web.address_layout']" position="replace"/>
+
         <xpath expr="//div[contains(@class, 'o_footer')]" position="replace">
             <div class="o_footer o_standard_footer o_company_#{company.id}_layout">
                 <style>
-                    .invoice-custom-footer {
-                        width: 100%;
-                        border-top: 1px solid #999;
-                        padding-top: 8px;
-                        font-size: 10px;
-                        color: #444;
-                    }
+
                     .invoice-custom-footer table {
                         width: 100%;
                         border-collapse: collapse;
