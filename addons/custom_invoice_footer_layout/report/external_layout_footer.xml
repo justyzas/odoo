@@ -40,7 +40,7 @@
     </template>
 
     <template id="custom_footer_columns">
-        <table border="0" width="100%" style="table-layout: fixed; border-top: 1px solid #dee2e6;">
+        <table border="0" width="100%" style="table-layout: fixed; border: none; border-top: 1px solid #dee2e6;">
             <tr>
                 <td width="33%" style="border: none; vertical-align: top; text-align: left; padding-top: 8px;">
                     <span t-if="company.invoice_footer_col_1"
