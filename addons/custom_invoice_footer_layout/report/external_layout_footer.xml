@@ -18,34 +18,24 @@
 
         <xpath expr="//div[contains(@class, 'o_footer')]" position="replace">
             <div class="o_footer o_standard_footer o_company_#{company.id}_layout">
-                <style>
-                    .invoice-custom-footer {
-                        display: flex;
-                        justify-content: space-between;
-                        width: 100%;
-                    }
-                    .invoice-custom-footer .col {
-                        flex: 1;
-                        vertical-align: top;
-                    }
-                    .invoice-custom-footer .col:nth-child(2) {
-                        text-align: center;
-                    }
-                    .invoice-custom-footer .col:last-child {
-                        text-align: right;
-                    }
-                </style>
-
                 <!-- Apply custom footer only on invoice/account.move reports -->
                 <t t-if="doc_model == 'account.move'">
-                    <div class="invoice-custom-footer">
-                        <div class="col" t-if="company.invoice_footer_col_1"
-                             t-esc="company.invoice_footer_col_1"/>
-                        <div class="col" t-if="company.invoice_footer_col_2"
-                             t-esc="company.invoice_footer_col_2"/>
-                        <div class="col" t-if="company.invoice_footer_col_3"
-                             t-esc="company.invoice_footer_col_3"/>
-                    </div>
+                    <table width="100%" style="border-collapse: collapse; table-layout: fixed;">
+                        <tr>
+                            <td width="33%" style="vertical-align: top; text-align: left;">
+                                <span t-if="company.invoice_footer_col_1"
+                                      t-esc="company.invoice_footer_col_1"/>
+                            </td>
+                            <td width="34%" style="vertical-align: top; text-align: center;">
+                                <span t-if="company.invoice_footer_col_2"
+                                      t-esc="company.invoice_footer_col_2"/>
+                            </td>
+                            <td width="33%" style="vertical-align: top; text-align: right;">
+                                <span t-if="company.invoice_footer_col_3"
+                                      t-esc="company.invoice_footer_col_3"/>
+                            </td>
+                        </tr>
+                    </table>
                 </t>
 
                 <!-- Keep a simple fallback for non-invoice reports -->
