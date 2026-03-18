@@ -13,6 +13,9 @@
         <!-- Remove customer address block -->
         <xpath expr="//t[@t-call='web.address_layout']" position="replace"/>
 
+        <!-- Remove document title heading -->
+        <xpath expr="//h2[@t-out='layout_document_title']" position="replace"/>
+
         <xpath expr="//div[contains(@class, 'o_footer')]" position="replace">
             <div class="o_footer o_standard_footer o_company_#{company.id}_layout">
                 <style>
