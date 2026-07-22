@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="edit_project_inherit_crm" model="ir.ui.view">
+        <field name="name">project.project.view.form.inherit.crm</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <div name="button_box" position="inside">
+                <button name="action_view_leads" type="object" class="oe_stat_button" icon="fa-star" invisible="lead_count == 0">
+                    <field name="lead_count" widget="statinfo" string="Opportunities"/>
+                </button>
+            </div>
+        </field>
+    </record>
+</odoo>
