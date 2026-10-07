@@ -1,3 +1,10 @@
+// Warning list popover
+.o_shift_warning_list {
+    min-width: 320px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
 // Template picker popover (rendered in the overlay, outside the grid)
 .o_shift_template_picker {
     min-width: 220px;
@@ -190,8 +197,16 @@
         .o_shift_selected_employee {
             box-shadow: inset 3px 0 0 var(--bs-primary);
         }
+        // Labour code warning: yellow frame (the selection frame wins)
+        .o_shift_cell.o_shift_warning {
+            box-shadow: inset 0 0 0 3px var(--bs-warning);
+        }
+
         .o_shift_cell.o_shift_selected_cell {
             box-shadow: inset 0 0 0 2px var(--bs-primary);
+        }
+        .o_shift_cell.o_shift_selected_cell.o_shift_warning {
+            box-shadow: inset 0 0 0 2px var(--bs-primary), inset 0 0 0 5px var(--bs-warning);
         }
     }
 }

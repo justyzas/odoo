@@ -5,6 +5,8 @@ import pytz
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
+from .res_config_settings import DEFAULT_LIMITS
+
 
 def _float_to_time(hours):
     """Convert a float hour (e.g. 6.5) to a time (06:30)."""
@@ -163,6 +165,10 @@ class HrShift(models.Model):
 
         :param date_from: first day, ``YYYY-MM-DD``
         :param date_to: last day (inclusive), ``YYYY-MM-DD``
+
+        Shifts are also returned for the 6 days before and the day after the
+        range: the labour code checks look at the previous 7 days and at the
+        rest before the next shift.
         """
         date_from = fields.Date.to_date(date_from)
         date_to = fields.Date.to_date(date_to)
@@ -176,8 +182,8 @@ class HrShift(models.Model):
         )
         shifts = self.search_read(
             [
-                ("date", ">=", date_from),
-                ("date", "<=", date_to),
+                ("date", ">=", date_from - timedelta(days=6)),
+                ("date", "<=", date_to + timedelta(days=1)),
                 ("employee_id", "in", [e["id"] for e in employees]),
             ],
             [
@@ -218,7 +224,21 @@ class HrShift(models.Model):
             "templates": templates,
             "holidays": self._get_public_holidays(date_from, date_to),
             "can_edit": self.env.user.has_group("hr_shift_planning.group_shift_planner"),
+            "limits": self._get_limits(),
         }
+
+    @api.model
+    def _get_limits(self):
+        """Labour code warning limits, in hours (see the HR settings)."""
+        # sudo: system parameters are not readable by planners and viewers
+        params = self.env["ir.config_parameter"].sudo()
+        limits = {}
+        for name, default in DEFAULT_LIMITS.items():
+            try:
+                limits[name] = float(params.get_param(f"hr_shift_planning.{name}", default))
+            except ValueError:
+                limits[name] = default
+        return limits
 
     @api.model
     def save_planning_changes(self, changes):

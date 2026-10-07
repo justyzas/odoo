@@ -17,7 +17,7 @@ defineActions([
 ]);
 defineMailModels();
 
-function makePlanningData({ canEdit = true } = {}) {
+function makePlanningData({ canEdit = true, limits = {}, extraShifts = [] } = {}) {
     return {
         employees: [
             { id: 1, name: "Ann", job_title: "Operator", department: "Production" },
@@ -59,9 +59,11 @@ function makePlanningData({ canEdit = true } = {}) {
                 duration: 7.5,
                 is_custom: false,
             },
+            ...extraShifts,
         ],
         holidays: [{ date: "2026-10-20", name: "Test holiday" }],
         can_edit: canEdit,
+        limits: { min_rest_hours: 11, max_shift_hours: 12, max_week_hours: 48, ...limits },
     };
 }
 
@@ -197,6 +199,115 @@ describe("totals and filters", () => {
         await animationFrame();
         expect(".o_shift_employee_name").toHaveCount(1);
         expect(".o_shift_employee_name").toHaveText("Bob");
+    });
+});
+
+describe("labour code warnings", () => {
+    const cell = (employeeId, date) =>
+        `.o_shift_cell[data-employee-id="${employeeId}"][data-day="${date}"]`;
+
+    async function paint(templateId, cells) {
+        await click(`.o_shift_brush[data-template-id="${templateId}"]`);
+        await animationFrame();
+        for (const selector of cells) {
+            await click(selector);
+            await animationFrame();
+        }
+    }
+
+    test("no warnings: no warning button", async () => {
+        await openGrid();
+        expect(".o_shift_warning").toHaveCount(0);
+        expect(".o_shift_warnings_btn").toHaveCount(0);
+    });
+
+    test("too little rest between a night and a morning shift", async () => {
+        await openGrid();
+
+        // Ann: night on the 14th (22:00-06:00), morning on the 15th (06:00)
+        await paint(11, [cell(1, "2026-10-14")]);
+
+        expect(cell(1, "2026-10-14")).toHaveClass("o_shift_warning");
+        expect(cell(1, "2026-10-15")).toHaveClass("o_shift_warning");
+        expect(cell(1, "2026-10-15")).toHaveAttribute("title", /Only 0 h of rest between shifts \(minimum 11 h\)/);
+        expect(".o_shift_warnings_btn").toHaveText("1");
+        // warnings do not block saving
+        expect(".o_shift_save").toBeEnabled();
+    });
+
+    test("shift longer than the maximum", async () => {
+        await openGrid();
+
+        await click(BOB_12);
+        await animationFrame();
+        await click(".o_shift_picker_custom");
+        await animationFrame();
+        await click(".o_shift_custom_from");
+        await edit("06:00");
+        await click(".o_shift_custom_to");
+        await edit("20:00");
+        await click(".o_shift_custom_apply");
+        await animationFrame();
+
+        expect(BOB_12).toHaveClass("o_shift_warning");
+        expect(BOB_12).toHaveAttribute("title", /14 h shift \(maximum 12 h\)/);
+    });
+
+    test("more than the maximum hours in 7 days", async () => {
+        await openGrid();
+
+        // Bob: 7 mornings of 7.5 h in a row = 52.5 h
+        const days = ["12", "13", "14", "15", "16", "17", "18"].map((d) => cell(2, `2026-10-${d}`));
+        await paint(10, days);
+
+        expect(".o_shift_warning").toHaveCount(1);
+        expect(cell(2, "2026-10-18")).toHaveClass("o_shift_warning");
+        expect(cell(2, "2026-10-18")).toHaveAttribute("title", /52.5 h in the 7 days up to this day \(maximum 48 h\)/);
+    });
+
+    test("rest is checked against the first shift of the next month", async () => {
+        await openGrid({
+            extraShifts: [
+                {
+                    id: 101,
+                    employee_id: 2,
+                    date: "2026-11-01",
+                    template_id: 10,
+                    start: "2026-11-01 04:00:00", // 07:00 local (+3)
+                    end: "2026-11-01 12:00:00",
+                    break_minutes: 30,
+                    duration: 7.5,
+                    is_custom: false,
+                },
+            ],
+        });
+
+        // night on the 31st ends 06:00 on Nov 1st, next shift at 07:00
+        await paint(11, [cell(2, "2026-10-31")]);
+        expect(cell(2, "2026-10-31")).toHaveClass("o_shift_warning");
+    });
+
+    test("limits come from the settings", async () => {
+        await openGrid({ limits: { max_shift_hours: 7 } });
+
+        expect(ANN_15).toHaveClass("o_shift_warning");
+        expect(ANN_15).toHaveAttribute("title", /7.5 h shift \(maximum 7 h\)/);
+    });
+
+    test("warning list selects the related cell", async () => {
+        await openGrid();
+
+        await paint(11, [cell(1, "2026-10-14")]);
+        await click(".o_shift_warnings_btn");
+        await animationFrame();
+
+        expect(".o_shift_warning_item").toHaveCount(1);
+        expect(".o_shift_warning_item").toHaveText(/Ann/);
+        await click(".o_shift_warning_item");
+        await animationFrame();
+
+        expect(".o_shift_warning_list").toHaveCount(0);
+        expect(cell(1, "2026-10-15")).toHaveClass("o_shift_selected_cell");
     });
 });
 

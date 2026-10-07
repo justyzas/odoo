@@ -67,7 +67,7 @@ Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuvi�
 | 3 | Lentelė: peržiūra ir naršymas | FR-1, FR-2.1, FR-2.2, FR-2.5 [M] | ✅ Baigtas |
 | 4 | Lentelė: redagavimas ir išsaugojimas | FR-2.3 A–B, FR-2.4, FR-5 | ✅ Baigtas |
 | 5 | Rankinis laikas, valandų suma, filtrai | FR-2.3 C, FR-2.5 [S] | ✅ Baigtas |
-| 6 | DK įspėjimai | FR-2.6 | ⬜ Neprasidėjęs |
+| 6 | DK įspėjimai | FR-2.6 | ✅ Baigtas |
 | 7 | Greitinimo funkcijos | FR-2.3 D–E, FR-2.5 [C], FR-2.7 | ⬜ Neprasidėjęs |
 | 8 | Vertimai ir galutinis patikrinimas | NFR-1–NFR-9 | ⬜ Neprasidėjęs |
 
@@ -298,15 +298,26 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 - Įspėjimų skaičius prie „Išsaugoti“ ir sąrašas jį paspaudus.
 - Python testai (ribų skaičiavimas), Hoot testai.
 
+**Kaip skaičiuojama:**
+- *Poilsis:* nuo vienos pamainos pabaigos iki kitos pradžios (pertraukos neįskaitomos į poilsį). Pažymimi abu langeliai.
+- *Pamainos trukmė:* darbo valandos be pertraukos.
+- *7 dienos:* slenkantis langas — kiekvienai mėnesio dienai sumuojamos tos dienos ir 6 ankstesnių dienų valandos. Pažymima diena, kurią riba viršijama.
+- Ribos su ta pačia reikšme (pvz. lygiai 12 val.) įspėjimo nesukelia.
+
 **Testavimas:**
-- [ ] 6.1. Naktinė pamaina (22:00–06:00), o kitą dieną rytinė (06:00): abu langeliai su geltonu rėmeliu, užvedus pelę paaiškinimas apie 11 val. poilsį.
-- [ ] 6.2. Rankinė pamaina 06:00–20:00 (14 val.): įspėjimas apie > 12 val.
-- [ ] 6.3. 7 dienos iš eilės po 7,5 val. (52,5 val.): įspėjimas apie > 48 val.
-- [ ] 6.4. Prie „Išsaugoti“ rodomas įspėjimų skaičius, paspaudus matomas sąrašas.
-- [ ] 6.5. Su įspėjimais išsaugoti galima.
-- [ ] 6.6. Nustatymuose pakeitus ribą (pvz. 12 → 10 val.), įspėjimai persiskaičiuoja.
-- [ ] 6.7. Naktinė pamaina paskutinę mėnesio dieną ir rytinė pirmą kito mėnesio dieną: įspėjimas rodomas.
-- [ ] 6.8. Testai praeina.
+- [ ] 6.1. Employees → Configuration → Settings: skyriuje „Shift Planning“ matomos trys ribos su numatytomis reikšmėmis 11:00, 12:00 ir 48.
+- [ ] 6.2. Naktinė pamaina (22:00–06:00), o kitą dieną rytinė (06:00): abu langeliai su geltonu rėmeliu. Užvedus pelę: „Only 0 h of rest between shifts (minimum 11 h)“.
+- [ ] 6.3. Rankinė pamaina 06:00–20:00 be pertraukos (14 val.): „14 h shift (maximum 12 h)“.
+- [ ] 6.4. 7 dienos iš eilės su „R“ (7 × 7.5 = 52.5 val.): pažymėta tik 7-oji diena, „52.5 h in the 7 days up to this day (maximum 48 h)“.
+- [ ] 6.5. Įspėjimai atsiranda ir dingsta iš karto keičiant langelius, dar neišsaugojus.
+- [ ] 6.6. Šalia „Save“ / „Discard“ rodomas geltonas mygtukas su įspėjimų skaičiumi (⚠ 3). Kai įspėjimų nėra, mygtuko nėra.
+- [ ] 6.7. Paspaudus mygtuką, matomas sąrašas: darbuotojas, data, įspėjimas. Paspaudus įrašą, pažymimas atitinkamas langelis ir lentelė paslenka iki jo (jei darbuotojas paslėptas filtru, filtras išvalomas).
+- [ ] 6.8. Su įspėjimais išsaugoti galima, įspėjimai išlieka ir perkrovus puslapį.
+- [ ] 6.9. Nustatymuose pakeitus ribą (pvz. 12 → 7 val.), perkrovus lentelę įspėjimai persiskaičiuoja („R“ 7.5 val. pamainos pažymimos). Grąžinti 12.
+- [ ] 6.10. Naktinė pamaina paskutinę mėnesio dieną ir rytinė pirmą kito mėnesio dieną (suplanuota kitame mėnesyje): paskutinės dienos langelyje rodomas įspėjimas.
+- [ ] 6.11. 7 dienų langas apima ir praėjusio mėnesio pabaigą: pvz. 4 pamainos praėjusio mėnesio gale + 3 šio mėnesio pradžioje → įspėjimas 3-ią šio mėnesio dieną.
+- [ ] 6.12. Viewer naudotojas taip pat mato įspėjimus ir jų sąrašą.
+- [ ] 6.13. Hoot ir Python testai praeina (nebūtina).
 
 **Commit message:** `hr_shift_planning: labour code warnings in planning grid`
 
@@ -390,3 +401,5 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 | 2026-10-07 | Žingsnio 5 pataisa: atidarant „Custom time“ formą buvo klaida „ctx.String is not a function“ (Owl šablone nepasiekiamos globalios JS funkcijos) |
 | 2026-10-07 | Žingsnio 5 pakeitimas (naudotojo prašymu): „Custom time“ Start / End laukai pakeisti iš naršyklės `type="time"` (formatas priklauso nuo OS / naršyklės, rodė AM/PM) į teksto laukus su 24 val. formatu ir trumpais įvedimais |
 | 2026-10-07 | Žingsnis 5 ištestuotas, visi punktai praėjo |
+| 2026-10-07 | Žingsnis 6 įgyvendintas. Ribos saugomos sistemos parametruose (`hr_shift_planning.*`), nustatymų blokas pridėtas prie Employees nustatymų (tik naujas blokas, esami nekeičiami). Lentelės duomenys papildomai apima 6 dienas prieš mėnesį ir 1 dieną po jo. Įspėjimų mygtuką ir sąrašą mato ir Viewer |
+| 2026-10-07 | Žingsnis 6 ištestuotas, visi punktai praėjo |

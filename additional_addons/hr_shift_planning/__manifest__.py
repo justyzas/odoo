@@ -12,6 +12,7 @@
         "views/hr_shift_template_views.xml",
         "views/hr_shift_views.xml",
         "views/hr_shift_planning_actions.xml",
+        "views/res_config_settings_views.xml",
         "views/hr_shift_planning_menus.xml",
     ],
     "assets": {

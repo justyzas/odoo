@@ -1,7 +1,12 @@
-import { Component, markRaw, onWillStart, useState } from "@odoo/owl";
+import { Component, markRaw, onPatched, onWillStart, useState } from "@odoo/owl";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { _t } from "@web/core/l10n/translation";
-import { deserializeDateTime, serializeDate } from "@web/core/l10n/dates";
+import {
+    deserializeDate,
+    deserializeDateTime,
+    formatDate,
+    serializeDate,
+} from "@web/core/l10n/dates";
 import { usePopover } from "@web/core/popover/popover_hook";
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
@@ -9,6 +14,7 @@ import { useSetupAction } from "@web/search/action_hook";
 import { Layout } from "@web/search/layout";
 import { standardActionServiceProps } from "@web/webclient/actions/action_service";
 import { floatToTimeInput, getSpanHours, ShiftTemplatePicker } from "./template_picker";
+import { ShiftWarningList } from "./warning_list";
 
 const { DateTime } = luxon;
 
@@ -30,8 +36,12 @@ function getColorStyle(color) {
     return `background-color: ${color}; color: ${getTextColor(color)};`;
 }
 
+function roundHours(hours) {
+    return Math.round(hours * 100) / 100;
+}
+
 function formatHours(hours) {
-    return `${Math.round(hours * 100) / 100}h`;
+    return `${roundHours(hours)}h`;
 }
 
 function toMinutes(hours) {
@@ -72,6 +82,7 @@ export class ShiftPlanningGrid extends Component {
         this.orm = useService("orm");
         this.dialog = useService("dialog");
         this.picker = usePopover(ShiftTemplatePicker, { position: "bottom" });
+        this.warningPopover = usePopover(ShiftWarningList, { position: "bottom" });
         this.today = DateTime.local().startOf("day");
         this.state = useState({
             month: this.today.startOf("month"),
@@ -81,10 +92,12 @@ export class ShiftPlanningGrid extends Component {
                 employees: [],
                 departments: [],
                 days: [],
+                checkDays: [],
                 originals: {},
                 templates: {},
                 palette: [],
                 canEdit: false,
+                limits: {},
             }),
             selected: null, // { employeeId, date }
             brush: null, // null: no brush, false: clear, number: template id
@@ -95,6 +108,15 @@ export class ShiftPlanningGrid extends Component {
         });
         this.loadId = 0;
         this.hoveredDay = null;
+        this.scrollToSelected = false;
+        onPatched(() => {
+            if (this.scrollToSelected) {
+                this.scrollToSelected = false;
+                document
+                    .querySelector(".o_shift_planning .o_shift_selected_cell")
+                    ?.scrollIntoView({ block: "center", inline: "center" });
+            }
+        });
 
         useSetupAction({
             beforeLeave: ({ forceLeave } = {}) => forceLeave || this.confirmLeave(),
@@ -161,6 +183,18 @@ export class ShiftPlanningGrid extends Component {
                 holiday: holidays[key] || "",
             });
         }
+        // Days looked at by the labour code checks: 6 days before the month
+        // (7-day window) and the day after (rest before the next shift).
+        const checkDays = [];
+        const lastCheckDay = month.endOf("month").plus({ days: 1 }).startOf("day");
+        for (let day = month.minus({ days: 6 }); day <= lastCheckDay; day = day.plus({ days: 1 })) {
+            checkDays.push({
+                key: serializeDate(day),
+                // minutes since epoch at local midnight, ignoring DST shifts
+                minutes: Date.UTC(day.year, day.month - 1, day.day) / 60000,
+                inMonth: day.month === month.month,
+            });
+        }
         const employees = data.employees.map((employee) => ({
             ...employee,
             info: employee.job_title || employee.department,
@@ -190,10 +224,12 @@ export class ShiftPlanningGrid extends Component {
             employees,
             departments,
             days,
+            checkDays,
             originals,
             templates,
             palette: data.templates.filter((t) => t.active).map((t) => templates[t.id]),
             canEdit: data.can_edit,
+            limits: data.limits || {},
         };
     }
 
@@ -245,14 +281,20 @@ export class ShiftPlanningGrid extends Component {
     }
 
     /**
-     * What a cell shows: the saved shift, or the pending change if any.
+     * What a cell shows: the saved shift, or the pending change if any, and
+     * its labour code warnings.
+     *
+     * @param {Object} employee
+     * @param {Object} day
+     * @param {Object} warnings result of ``computeWarnings``
      */
-    getCell(employee, day) {
+    getCell(employee, day, warnings) {
         const key = cellKey(employee.id, day.key);
         const dirty = key in this.state.pending;
         const value = this.getValue(employee.id, day.key);
+        const cellWarnings = warnings.cells[key] || [];
         if (!value) {
-            return { shift: null, dirty };
+            return { shift: null, dirty, warnings: cellWarnings, title: cellWarnings.join("\n") };
         }
         const template = this.state.grid.templates[value.templateId];
         const from = floatToTimeInput(value.hourFrom);
@@ -263,6 +305,9 @@ export class ShiftPlanningGrid extends Component {
             `${from} - ${to}`,
             value.breakMinutes ? _t("Break: %s min", value.breakMinutes) : "",
         ];
+        for (const warning of cellWarnings) {
+            title.push(`⚠ ${warning}`);
+        }
         return {
             shift: {
                 label: template
@@ -270,10 +315,139 @@ export class ShiftPlanningGrid extends Component {
                     : `${from.slice(0, 2)}-${to.slice(0, 2)}`,
                 hours: formatHours(this.getDuration(value)),
                 style: template ? template.style : getColorStyle(DEFAULT_COLOR),
-                title: title.filter(Boolean).join("\n"),
             },
             dirty,
+            warnings: cellWarnings,
+            title: title.filter(Boolean).join("\n"),
         };
+    }
+
+    // ------------------------------------------------------------------
+    // Labour code warnings
+    // ------------------------------------------------------------------
+
+    /**
+     * Check the plan (saved shifts and pending changes) against the labour
+     * code limits. Warnings never block saving.
+     *
+     * @returns {{ cells: Object<string, string[]>, issues: Object[] }}
+     *  ``cells``: warning messages per cell key; ``issues``: one entry per
+     *  problem, for the warning list.
+     */
+    computeWarnings() {
+        const { employees, checkDays, limits } = this.state.grid;
+        const cells = {};
+        const issues = [];
+        const add = (employee, date, message, keys) => {
+            issues.push({
+                employeeId: employee.id,
+                employeeName: employee.name,
+                date,
+                dateLabel: formatDate(deserializeDate(date)),
+                message,
+            });
+            for (const key of keys) {
+                (cells[key] ||= []).push(message);
+            }
+        };
+        const maxShiftMinutes = toMinutes(limits.max_shift_hours ?? 12);
+        const minRestMinutes = toMinutes(limits.min_rest_hours ?? 11);
+        const maxWeekMinutes = toMinutes(limits.max_week_hours ?? 48);
+
+        for (const employee of employees) {
+            const shifts = [];
+            const workedByDay = [];
+            for (const day of checkDays) {
+                const value = this.getValue(employee.id, day.key);
+                const worked = value ? toMinutes(this.getDuration(value)) : 0;
+                workedByDay.push(worked);
+                if (value) {
+                    const start = day.minutes + toMinutes(value.hourFrom);
+                    shifts.push({
+                        date: day.key,
+                        key: cellKey(employee.id, day.key),
+                        inMonth: day.inMonth,
+                        start,
+                        end: start + toMinutes(getSpanHours(value.hourFrom, value.hourTo)),
+                        worked,
+                    });
+                }
+            }
+
+            for (const shift of shifts) {
+                if (shift.inMonth && shift.worked > maxShiftMinutes) {
+                    add(
+                        employee,
+                        shift.date,
+                        _t("%(hours)s h shift (maximum %(max)s h)", {
+                            hours: roundHours(shift.worked / 60),
+                            max: roundHours(maxShiftMinutes / 60),
+                        }),
+                        [shift.key]
+                    );
+                }
+            }
+
+            for (let i = 1; i < shifts.length; i++) {
+                const previous = shifts[i - 1];
+                const next = shifts[i];
+                const rest = next.start - previous.end;
+                if (rest < minRestMinutes && (previous.inMonth || next.inMonth)) {
+                    add(
+                        employee,
+                        next.inMonth ? next.date : previous.date,
+                        _t("Only %(rest)s h of rest between shifts (minimum %(min)s h)", {
+                            rest: roundHours(Math.max(rest, 0) / 60),
+                            min: roundHours(minRestMinutes / 60),
+                        }),
+                        [previous.key, next.key]
+                    );
+                }
+            }
+
+            // Rolling 7-day windows ending on each day of the month
+            checkDays.forEach((day, index) => {
+                if (!day.inMonth || !workedByDay[index] || index < 6) {
+                    return;
+                }
+                const total = workedByDay.slice(index - 6, index + 1).reduce((a, b) => a + b, 0);
+                if (total > maxWeekMinutes) {
+                    add(
+                        employee,
+                        day.key,
+                        _t("%(hours)s h in the 7 days up to this day (maximum %(max)s h)", {
+                            hours: roundHours(total / 60),
+                            max: roundHours(maxWeekMinutes / 60),
+                        }),
+                        [cellKey(employee.id, day.key)]
+                    );
+                }
+            });
+        }
+        issues.sort(
+            (a, b) => a.date.localeCompare(b.date) || a.employeeName.localeCompare(b.employeeName)
+        );
+        return { cells, issues };
+    }
+
+    openWarnings(ev) {
+        this.picker.close();
+        this.warningPopover.open(ev.currentTarget, {
+            issues: this.computeWarnings().issues,
+            onSelect: (issue) => this.focusCell(issue.employeeId, issue.date),
+        });
+    }
+
+    /**
+     * Select a cell and scroll to it, showing its employee if filtered out.
+     */
+    focusCell(employeeId, date) {
+        if (!this.visibleEmployees.some((employee) => employee.id === employeeId)) {
+            this.state.search = "";
+            this.state.department = "";
+        }
+        this.state.selected = { employeeId, date };
+        this.scrollToSelected = true;
     }
 
     getEmployeeTotal(employee) {
@@ -305,6 +479,7 @@ export class ShiftPlanningGrid extends Component {
                 selected && selected.date === day.key && selected.employeeId === employee.id
             ),
             o_shift_dirty: cell.dirty,
+            o_shift_warning: cell.warnings.length > 0,
             o_shift_editable: this.state.grid.canEdit,
         };
     }

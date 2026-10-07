@@ -158,6 +158,23 @@ class TestHrShift(TransactionCase):
         with self.assertRaises(AccessError):
             self.Shift.with_user(self.user).get_planning_data("2026-10-01", "2026-10-31")
 
+    def test_planning_data_includes_neighbour_days(self):
+        before = self._create(day=date(2026, 9, 25))  # 6 days before October
+        self._create(day=date(2026, 9, 24))  # 7 days before: not needed
+        after = self._create(day=date(2026, 11, 1))  # day after the month
+        data = self.Shift.get_planning_data("2026-10-01", "2026-10-31")
+        self.assertEqual({s["id"] for s in data["shifts"]}, {before.id, after.id})
+
+    def test_planning_data_limits(self):
+        data = self.Shift.with_user(self.viewer).get_planning_data("2026-10-01", "2026-10-31")
+        self.assertEqual(
+            data["limits"], {"min_rest_hours": 11.0, "max_shift_hours": 12.0, "max_week_hours": 48.0}
+        )
+        settings = self.env["res.config.settings"].create({"shift_max_shift_hours": 10.0})
+        settings.execute()
+        data = self.Shift.with_user(self.viewer).get_planning_data("2026-10-01", "2026-10-31")
+        self.assertEqual(data["limits"]["max_shift_hours"], 10.0)
+
     def test_planning_data_can_edit(self):
         Shift = self.Shift
         self.assertTrue(Shift.with_user(self.planner).get_planning_data("2026-10-01", "2026-10-31")["can_edit"])

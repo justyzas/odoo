@@ -5,12 +5,19 @@
         <div class="o_action o_shift_planning">
             <Layout display="{ controlPanel: {} }">
                 <t t-set-slot="control-panel-create-button">
-                    <div t-if="state.grid.canEdit" class="d-flex gap-1">
-                        <button class="btn btn-primary o_shift_save" t-att-disabled="!hasChanges or state.saving" t-on-click="save">
-                            Save<t t-if="hasChanges"> (<t t-esc="changeCount"/>)</t>
-                        </button>
-                        <button class="btn btn-secondary o_shift_discard" t-att-disabled="!hasChanges or state.saving" t-on-click="discard">
-                            Discard
+                    <div class="d-flex gap-1">
+                        <t t-if="state.grid.canEdit">
+                            <button class="btn btn-primary o_shift_save" t-att-disabled="!hasChanges or state.saving" t-on-click="save">
+                                Save<t t-if="hasChanges"> (<t t-esc="changeCount"/>)</t>
+                            </button>
+                            <button class="btn btn-secondary o_shift_discard" t-att-disabled="!hasChanges or state.saving" t-on-click="discard">
+                                Discard
+                            </button>
+                        </t>
+                        <t t-set="warningCount" t-value="computeWarnings().issues.length"/>
+                        <button t-if="warningCount" class="btn btn-warning o_shift_warnings_btn"
+                                title="Labour code warnings" t-on-click="openWarnings">
+                            <i class="fa fa-exclamation-triangle me-1"/><t t-esc="warningCount"/>
                         </button>
                     </div>
                 </t>
@@ -49,6 +56,7 @@
                     </div>
                 </t>
 
+                <t t-set="warnings" t-value="computeWarnings()"/>
                 <div t-if="!state.grid.employees.length" class="o_view_nocontent">
                     <div class="o_nocontent_help">
                         <p class="o_view_nocontent_empty_folder">No employees</p>
@@ -89,10 +97,10 @@
                                 <div t-if="employee.info" class="o_shift_employee_info text-truncate" t-esc="employee.info"/>
                             </th>
                             <t t-foreach="state.grid.days" t-as="day" t-key="day.key">
-                                <t t-set="cell" t-value="getCell(employee, day)"/>
+                                <t t-set="cell" t-value="getCell(employee, day, warnings)"/>
                                 <td class="o_shift_cell" t-att-class="getCellClass(employee, day, cell)"
                                     t-att-data-day="day.key" t-att-data-employee-id="employee.id"
-                                    t-att-title="cell.shift and cell.shift.title">
+                                    t-att-title="cell.title">
                                     <div t-if="cell.shift" class="o_shift_chip" t-att-style="cell.shift.style">
                                         <span class="o_shift_code" t-esc="cell.shift.label"/>
                                         <span class="o_shift_hours" t-esc="cell.shift.hours"/>
