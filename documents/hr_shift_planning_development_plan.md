@@ -61,7 +61,7 @@ Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuvi�
 | 0 | Pasiruošimas: `hr_employee_calendar_planning` pašalinimas | — | ✅ Baigtas |
 | 1 | Karkasas, teisės, šablonai | FR-1 (dalinai), FR-3, FR-5 | ✅ Baigtas |
 | 2 | Pamainos modelis | FR-4, FR-5 | ✅ Baigtas |
-| 3 | Lentelė: peržiūra ir naršymas | FR-1, FR-2.1, FR-2.2, FR-2.5 [M] | ⬜ Neprasidėjęs |
+| 3 | Lentelė: peržiūra ir naršymas | FR-1, FR-2.1, FR-2.2, FR-2.5 [M] | ✅ Baigtas |
 | 4 | Lentelė: redagavimas ir išsaugojimas | FR-2.3 A–B, FR-2.4, FR-5 | ⬜ Neprasidėjęs |
 | 5 | Rankinis laikas, valandų suma, filtrai | FR-2.3 C, FR-2.5 [S] | ⬜ Neprasidėjęs |
 | 6 | DK įspėjimai | FR-2.6 | ⬜ Neprasidėjęs |
@@ -180,18 +180,24 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 - Meniu: Darbuotojai → Darbo valandos → Planavimas (pirmas punktas).
 - Hoot testai: atvaizdavimas, žymėjimas, naršymas.
 
+**Pastaba:** kol lentelės negalima redaguoti (žingsnis 4), testinės pamainos kuriamos per „Shifts (list)“. Šis meniu paliekamas iki žingsnio 4.
+
 **Testavimas:**
-- [ ] 3.1. Darbuotojai → Darbo valandos → Planavimas atidaro lentelę per 3 paspaudimus (NFR-1).
-- [ ] 3.2. Rodomi visi aktyvūs įmonės darbuotojai, archyvuoti nerodomi.
-- [ ] 3.3. Viršuje matomos visos einamojo mėnesio dienos su savaitės dienomis.
-- [ ] 3.4. Žingsnyje 2 sukurtos pamainos rodomos teisingose vietose, su kodu, valandomis ir šablono spalva.
-- [ ] 3.5. Paspaudus langelį, pažymimas langelis, darbuotojo vardas ir dienos antraštė.
-- [ ] 3.6. Užvedus pelę, eilutė ir stulpelis paryškinami.
-- [ ] 3.7. Šiandiena, savaitgaliai ir valstybinės šventės išskirti.
-- [ ] 3.8. ◀ / ▶ perjungia mėnesį, „Šiandien“ grąžina į einamąjį.
-- [ ] 3.9. Slenkant žemyn ir į šoną, vardai ir dienos lieka matomi.
-- [ ] 3.10. Langelių aukštis ≥ 60 px (naršyklės DevTools).
-- [ ] 3.11. Hoot ir Python testai praeina.
+- [ ] 3.1. Employees → Working Hours → Planning atidaro lentelę per 3 paspaudimus (NFR-1). „Planning“ yra pirmas meniu punktas.
+- [ ] 3.2. Rodomi visi aktyvūs įmonės darbuotojai, surūšiuoti pagal vardą, po vardu pareigos (arba skyrius). Archyvuoti darbuotojai nerodomi.
+- [ ] 3.3. Viršuje matomos visos einamojo mėnesio dienos: dienos numeris ir savaitės diena.
+- [ ] 3.4. Per „Shifts (list)“ sukurtos pamainos rodomos teisingose vietose: šablono kodas, valandos (pvz. „7.5h“), šablono spalvos fonas.
+- [ ] 3.5. Pamaina su pakeistu laiku rodoma su žvaigždute („R*“), pamaina be šablono — pilka su laiku („06-12“).
+- [ ] 3.6. Užvedus pelę ant pamainos, rodomas šablono pavadinimas, laikas ir pertrauka.
+- [ ] 3.7. Paspaudus langelį, pažymimas langelis (mėlynas rėmelis), darbuotojo vardas kairėje ir dienos antraštė viršuje. Paspaudus kitą, žymėjimas persikelia.
+- [ ] 3.8. Užvedus pelę, paryškinama eilutė ir stulpelis.
+- [ ] 3.9. Šiandienos antraštė mėlyna, savaitgaliai pilkesni.
+- [ ] 3.10. Valstybinė šventė (jei įvesta įmonės darbo grafike → Public Holidays) pažymėta gelsva spalva, užvedus pelę ant antraštės rodomas pavadinimas.
+- [ ] 3.11. ◀ / ▶ perjungia mėnesį, pavadinimas viršuje keičiasi, „Today“ grąžina į einamąjį.
+- [ ] 3.12. Slenkant žemyn ir į šoną, vardai ir dienos lieka matomi.
+- [ ] 3.13. Langelių aukštis ≥ 60 px (naršyklės DevTools).
+- [ ] 3.14. Viewer naudotojas mato lentelę.
+- [ ] 3.15. Hoot testai (nebūtina): `/web/tests?filter=hr_shift_planning`. Python testai (nebūtina).
 
 **Commit message:** `hr_shift_planning: read-only monthly planning grid`
 
@@ -355,3 +361,5 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 | 2026-10-07 | Žingsnis 2 įgyvendintas. Papildomai: patikrinimas, kad pamaina prasideda nurodytą dieną; filtrai „Custom Time“ ir „Without Template“. Pakeitus šabloną, esamų pamainų `is_custom` nepersiskaičiuoja |
 | 2026-10-07 | Žingsnio 2 pataisos: naujoje sąrašo eilutėje nebuvo rodomi darbuotojai ir šablonai (pamainos įmonė dabar imama iš darbuotojo arba, kol jo nėra, iš dabartinės įmonės); manifeste nurodytas autorius „SEFU, MB developers“ |
 | 2026-10-07 | Žingsnis 2 ištestuotas rankiniu būdu, visi punktai praėjo. Testavimo punktai sunumeruoti (`<žingsnis>.<nr>.`) |
+| 2026-10-07 | Žingsnis 3 įgyvendintas. Papildomai jau dabar rodomas rankinio laiko žymėjimas („R*“, pilkas „06-12“), kuris planuotas žingsnyje 5 (duomenys jau yra). „Shifts (list)“ paliktas iki žingsnio 4, kad būtų galima kurti testines pamainas |
+| 2026-10-07 | Žingsnis 3 ištestuotas, visi punktai praėjo |

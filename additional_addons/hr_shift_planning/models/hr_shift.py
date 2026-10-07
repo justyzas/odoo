@@ -142,6 +142,93 @@ class HrShift(models.Model):
                 shift[name] != value for name, value in values.items()
             )
 
+    @api.model
+    def get_planning_data(self, date_from, date_to):
+        """Everything the planning grid needs for a date range, in one call.
+
+        :param date_from: first day, ``YYYY-MM-DD``
+        :param date_to: last day (inclusive), ``YYYY-MM-DD``
+        """
+        date_from = fields.Date.to_date(date_from)
+        date_to = fields.Date.to_date(date_to)
+        company_ids = self.env.companies.ids
+
+        # hr.employee.public: readable by every internal user, unlike hr.employee
+        employees = self.env["hr.employee.public"].search_read(
+            [("company_id", "in", company_ids)],
+            ["name", "job_title", "department_id"],
+            order="name",
+        )
+        shifts = self.search_read(
+            [
+                ("date", ">=", date_from),
+                ("date", "<=", date_to),
+                ("employee_id", "in", [e["id"] for e in employees]),
+            ],
+            [
+                "employee_id", "date", "template_id", "start_datetime", "end_datetime",
+                "break_minutes", "duration", "is_custom",
+            ],
+        )
+        Template = self.env["hr.shift.template"].with_context(active_test=False)
+        used_template_ids = {s["template_id"][0] for s in shifts if s["template_id"]}
+        templates = Template.search(
+            ["|", ("active", "=", True), ("id", "in", list(used_template_ids))]
+        ).read(["name", "code", "color", "hour_from", "hour_to", "break_minutes", "duration", "active"])
+
+        return {
+            "employees": [
+                {
+                    "id": e["id"],
+                    "name": e["name"],
+                    "job_title": e["job_title"] or "",
+                    "department": e["department_id"][1] if e["department_id"] else "",
+                }
+                for e in employees
+            ],
+            "shifts": [
+                {
+                    "id": s["id"],
+                    "employee_id": s["employee_id"][0],
+                    "date": fields.Date.to_string(s["date"]),
+                    "template_id": s["template_id"][0] if s["template_id"] else False,
+                    "start": fields.Datetime.to_string(s["start_datetime"]),
+                    "end": fields.Datetime.to_string(s["end_datetime"]),
+                    "break_minutes": s["break_minutes"],
+                    "duration": s["duration"],
+                    "is_custom": s["is_custom"],
+                }
+                for s in shifts
+            ],
+            "templates": templates,
+            "holidays": self._get_public_holidays(date_from, date_to),
+        }
+
+    @api.model
+    def _get_public_holidays(self, date_from, date_to):
+        """Public holidays (global time off of the company working schedule)
+        as ``[{"date": "YYYY-MM-DD", "name": ...}]`` in the user's timezone."""
+        tz = pytz.timezone(self.env.user.tz or "UTC")
+        start_utc = tz.localize(datetime.combine(date_from, time.min)).astimezone(pytz.utc)
+        end_utc = tz.localize(datetime.combine(date_to, time.max)).astimezone(pytz.utc)
+        calendar_ids = self.env.companies.resource_calendar_id.ids
+        leaves = self.env["resource.calendar.leaves"].search([
+            ("resource_id", "=", False),
+            ("calendar_id", "in", calendar_ids + [False]),
+            ("company_id", "in", self.env.companies.ids + [False]),
+            ("date_from", "<=", end_utc.replace(tzinfo=None)),
+            ("date_to", ">=", start_utc.replace(tzinfo=None)),
+        ])
+        holidays = {}
+        for leave in leaves:
+            day = pytz.utc.localize(leave.date_from).astimezone(tz).date()
+            last_day = pytz.utc.localize(leave.date_to - timedelta(seconds=1)).astimezone(tz).date()
+            while day <= last_day:
+                if date_from <= day <= date_to:
+                    holidays.setdefault(fields.Date.to_string(day), leave.name)
+                day += timedelta(days=1)
+        return [{"date": d, "name": n} for d, n in sorted(holidays.items())]
+
     @api.constrains("start_datetime", "end_datetime", "break_minutes")
     def _check_times(self):
         for shift in self:

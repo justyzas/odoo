@@ -1,0 +1,127 @@
+.o_shift_planning {
+    $o-shift-cell-height: 60px;
+    $o-shift-cell-width: 48px;
+    $o-shift-employee-width: 200px;
+
+    .o_shift_grid {
+        border-collapse: separate;
+        border-spacing: 0;
+        table-layout: fixed;
+        user-select: none;
+
+        th, td {
+            border-right: 1px solid var(--bs-border-color);
+            border-bottom: 1px solid var(--bs-border-color);
+            background-color: var(--bs-body-bg);
+        }
+
+        // Sticky day header row
+        thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            text-align: center;
+            font-weight: normal;
+            padding: 4px 2px;
+        }
+
+        // Sticky employee column
+        .o_shift_employee, .o_shift_corner {
+            position: sticky;
+            left: 0;
+            z-index: 1;
+            width: $o-shift-employee-width;
+            min-width: $o-shift-employee-width;
+            max-width: $o-shift-employee-width;
+            padding: 4px 8px;
+            text-align: left;
+            font-weight: normal;
+        }
+        .o_shift_corner {
+            z-index: 3;
+            font-weight: bold;
+            vertical-align: bottom;
+        }
+
+        .o_shift_day_header {
+            width: $o-shift-cell-width;
+            min-width: $o-shift-cell-width;
+        }
+        .o_shift_day_number {
+            font-weight: bold;
+        }
+        .o_shift_weekday {
+            font-size: 0.8em;
+            color: var(--bs-secondary-color);
+        }
+
+        .o_shift_employee_info {
+            font-size: 0.8em;
+            color: var(--bs-secondary-color);
+        }
+
+        .o_shift_cell {
+            height: $o-shift-cell-height;
+            min-width: $o-shift-cell-width;
+            padding: 3px;
+            cursor: pointer;
+        }
+
+        .o_shift_chip {
+            height: 100%;
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.2;
+        }
+        .o_shift_code {
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .o_shift_hours {
+            font-size: 0.75em;
+        }
+
+        // Day kinds
+        .o_shift_weekend {
+            background-color: var(--bs-tertiary-bg);
+        }
+        .o_shift_holiday {
+            background-color: var(--bs-warning-bg-subtle);
+        }
+        thead .o_shift_today {
+            background-color: var(--bs-primary);
+            color: var(--bs-white);
+            .o_shift_weekday {
+                color: inherit;
+            }
+        }
+        tbody .o_shift_today {
+            background-color: var(--bs-primary-bg-subtle);
+        }
+
+        // Hover: row via CSS, column via a class set from JS. Drawn as a
+        // background overlay so it does not clash with the selection borders.
+        tbody tr:hover > *,
+        .o_shift_col_hover {
+            background-image: linear-gradient(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.06));
+        }
+
+        // Selection
+        .o_shift_selected_employee,
+        thead .o_shift_selected_day {
+            background-color: var(--bs-primary-bg-subtle);
+            color: var(--bs-primary-text-emphasis);
+            font-weight: bold;
+            box-shadow: inset 0 -3px 0 var(--bs-primary);
+        }
+        .o_shift_selected_employee {
+            box-shadow: inset 3px 0 0 var(--bs-primary);
+        }
+        .o_shift_cell.o_shift_selected_cell {
+            box-shadow: inset 0 0 0 2px var(--bs-primary);
+        }
+    }
+}

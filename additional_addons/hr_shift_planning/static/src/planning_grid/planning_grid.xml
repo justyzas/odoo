@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="hr_shift_planning.ShiftPlanningGrid">
+        <div class="o_action o_shift_planning">
+            <Layout display="{ controlPanel: {} }">
+                <t t-set-slot="layout-actions">
+                    <div class="d-flex align-items-center gap-1">
+                        <button class="btn btn-secondary o_shift_prev" title="Previous month" t-on-click="() => this.changeMonth(-1)">
+                            <i class="fa fa-chevron-left"/>
+                        </button>
+                        <button class="btn btn-secondary o_shift_today_btn" t-on-click="goToday">Today</button>
+                        <button class="btn btn-secondary o_shift_next" title="Next month" t-on-click="() => this.changeMonth(1)">
+                            <i class="fa fa-chevron-right"/>
+                        </button>
+                        <span class="o_shift_month ms-2 fw-bold text-capitalize" t-esc="monthLabel"/>
+                    </div>
+                </t>
+
+                <div t-if="!state.grid.employees.length" class="o_view_nocontent">
+                    <div class="o_nocontent_help">
+                        <p class="o_view_nocontent_empty_folder">No employees</p>
+                    </div>
+                </div>
+                <table t-else="" class="o_shift_grid"
+                       t-on-click="onGridClick"
+                       t-on-mouseover="onGridMouseOver"
+                       t-on-mouseleave="onGridMouseLeave">
+                    <thead>
+                        <tr>
+                            <th class="o_shift_corner">Employee</th>
+                            <t t-foreach="state.grid.days" t-as="day" t-key="day.key">
+                                <th class="o_shift_day_header" t-att-class="getDayClass(day)"
+                                    t-att-data-day="day.key" t-att-title="day.holiday">
+                                    <div class="o_shift_day_number" t-esc="day.day"/>
+                                    <div class="o_shift_weekday" t-esc="day.weekday"/>
+                                </th>
+                            </t>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr t-foreach="state.grid.employees" t-as="employee" t-key="employee.id">
+                            <th class="o_shift_employee" t-att-class="{ o_shift_selected_employee: isEmployeeSelected(employee) }">
+                                <div class="o_shift_employee_name text-truncate" t-esc="employee.name"/>
+                                <div t-if="employee.info" class="o_shift_employee_info text-truncate" t-esc="employee.info"/>
+                            </th>
+                            <t t-foreach="state.grid.days" t-as="day" t-key="day.key">
+                                <t t-set="shift" t-value="getShift(employee, day)"/>
+                                <td class="o_shift_cell" t-att-class="getCellClass(employee, day)"
+                                    t-att-data-day="day.key" t-att-data-employee-id="employee.id"
+                                    t-att-title="shift and shift.title">
+                                    <div t-if="shift" class="o_shift_chip" t-att-style="shift.style">
+                                        <span class="o_shift_code" t-esc="shift.label"/>
+                                        <span class="o_shift_hours" t-esc="shift.hours"/>
+                                    </div>
+                                </td>
+                            </t>
+                        </tr>
+                    </tbody>
+                </table>
+            </Layout>
+        </div>
+    </t>
+
+</templates>

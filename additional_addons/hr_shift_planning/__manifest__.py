@@ -11,8 +11,17 @@
         "security/ir.model.access.csv",
         "views/hr_shift_template_views.xml",
         "views/hr_shift_views.xml",
+        "views/hr_shift_planning_actions.xml",
         "views/hr_shift_planning_menus.xml",
     ],
+    "assets": {
+        "web.assets_backend": [
+            "hr_shift_planning/static/src/**/*",
+        ],
+        "web.assets_unit_tests": [
+            "hr_shift_planning/static/tests/**/*",
+        ],
+    },
     "installable": True,
     "application": False,
 }

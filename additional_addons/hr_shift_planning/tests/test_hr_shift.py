@@ -128,3 +128,32 @@ class TestHrShift(TransactionCase):
         shift = self._create()
         with self.assertRaises(AccessError):
             shift.with_user(self.user).read(["date"])
+
+    def test_planning_data(self):
+        shift = self._create()
+        self._create(day=date(2026, 11, 2))  # outside the requested range
+        self.env["resource.calendar.leaves"].create({
+            "name": "Test Holiday",
+            "calendar_id": self.env.company.resource_calendar_id.id,
+            "date_from": datetime(2026, 10, 19, 21, 0),
+            "date_to": datetime(2026, 10, 20, 20, 59, 59),
+        })
+        self.viewer.tz = "Europe/Vilnius"
+        data = self.Shift.with_user(self.viewer).get_planning_data("2026-10-01", "2026-10-31")
+
+        self.assertIn(self.employee.id, [e["id"] for e in data["employees"]])
+        self.assertEqual([s["id"] for s in data["shifts"]], [shift.id])
+        self.assertEqual(data["shifts"][0]["date"], "2026-10-15")
+        self.assertEqual(data["shifts"][0]["start"], "2026-10-15 03:00:00")
+        self.assertIn(self.morning.id, [t["id"] for t in data["templates"]])
+        self.assertIn({"date": "2026-10-20", "name": "Test Holiday"}, data["holidays"])
+
+    def test_planning_data_includes_archived_used_template(self):
+        self._create()
+        self.morning.active = False
+        data = self.Shift.get_planning_data("2026-10-01", "2026-10-31")
+        self.assertIn(self.morning.id, [t["id"] for t in data["templates"]])
+
+    def test_planning_data_plain_user_no_access(self):
+        with self.assertRaises(AccessError):
+            self.Shift.with_user(self.user).get_planning_data("2026-10-01", "2026-10-31")
