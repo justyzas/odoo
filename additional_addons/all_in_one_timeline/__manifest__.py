@@ -33,7 +33,8 @@ Pagrindinės funkcijos:
     "author": "Benas Jasiulis",
     "maintainer": "Benas Jasiulis",
     "license": "LGPL-3",
-    "depends": ["project"],
+    # project_timeline (-> web_timeline) must load first: our JS overrides its "timeline" view
+    "depends": ["project", "project_timeline"],
     "data": [
         "views/timeline_menus.xml",
         "views/project_project_views.xml",
