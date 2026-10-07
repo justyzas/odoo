@@ -49,14 +49,17 @@ Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuvi�
 | Kitas laikas | Custom time |
 | Šiandien | Today |
 | Archyvuoti (filtras) | Archived |
+| Baigiasi kitą dieną | Ends Next Day |
+| Pertrauka (min.) | Break (minutes) |
+| Trukmė | Duration (hours) |
 | Konfigūracija → Nustatymai | Configuration → Settings |
 
 ## Būsena
 
 | # | Žingsnis | Specifikacija | Būsena |
 |---|---|---|---|
-| 0 | Pasiruošimas: `hr_employee_calendar_planning` pašalinimas | — | ⬜ Laukia sprendimo |
-| 1 | Karkasas, teisės, šablonai | FR-1 (dalinai), FR-3, FR-5 | ⬜ Neprasidėjęs |
+| 0 | Pasiruošimas: `hr_employee_calendar_planning` pašalinimas | — | ✅ Baigtas |
+| 1 | Karkasas, teisės, šablonai | FR-1 (dalinai), FR-3, FR-5 | ✅ Baigtas |
 | 2 | Pamainos modelis | FR-4, FR-5 | ⬜ Neprasidėjęs |
 | 3 | Lentelė: peržiūra ir naršymas | FR-1, FR-2.1, FR-2.2, FR-2.5 [M] | ⬜ Neprasidėjęs |
 | 4 | Lentelė: redagavimas ir išsaugojimas | FR-2.3 A–B, FR-2.4, FR-5 | ⬜ Neprasidėjęs |
@@ -107,9 +110,12 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 **Testavimas:**
 - [ ] Modulis įdiegiamas per Apps be klaidų.
 - [ ] Meniu Darbuotojai → Darbo valandos → Šablonai matomas administratoriui.
-- [ ] Sukurti šablonus: Rytinė (R, 06:00–14:00, 30 min. pertrauka), Vakarinė (V, 14:00–22:00, 30 min.), Naktinė (N, 22:00–06:00, 30 min.). Trukmė rodo 7,5 val. visiems trims.
+- [ ] Sukurti šablonus: Rytinė (R, 06:00–14:00, 30 min. pertrauka), Vakarinė (V, 14:00–22:00, 30 min.), Naktinė (N, 22:00–06:00, 30 min.). Trukmė (Duration) rodo 07:30 visiems trims.
+- [ ] Naktinei pažymėta „Baigiasi kitą dieną“ (Ends Next Day), rytinei ir vakarinei — ne.
+- [ ] Pakeitus pabaigą, trukmė persiskaičiuoja iš karto.
 - [ ] Bandant sukurti antrą šabloną su kodu „R“, rodoma klaida.
-- [ ] Kodas ilgesnis nei 3 simboliai neleidžiamas.
+- [ ] Kodo lauke negalima įvesti daugiau nei 3 simbolių.
+- [ ] Pradžia 25:00 arba pertrauka, ilgesnė už pamainą, neleidžiama.
 - [ ] Sąraše šablonų tvarką galima keisti tempiant, spalva matoma.
 - [ ] Archyvuotas šablonas dingsta iš sąrašo ir matomas su filtru „Archyvuoti“.
 - [ ] Sukurti naudotoją su grupe „Darbo valandos / Peržiūra“: mato šablonus, bet negali jų kurti ar redaguoti.
@@ -339,3 +345,5 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 |---|---|
 | 2026-10-07 | Sukurtas planas |
 | 2026-10-07 | Lietuviškas vertimas perkeltas į žingsnį 8; kūrimo metu testuojama angliškai |
+| 2026-10-07 | Žingsnis 0: modulio aplankas pašalintas. Žingsnis 1 įgyvendintas; papildomai pridėtas laukas „Baigiasi kitą dieną“ (`is_overnight`). Testuojama development DB |
+| 2026-10-07 | Žingsniai 0 ir 1 ištestuoti rankiniu būdu, visi punktai praėjo. Python testai nepaleisti |

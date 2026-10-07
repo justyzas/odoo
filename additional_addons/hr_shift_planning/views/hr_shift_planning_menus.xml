@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <menuitem
+        id="menu_hr_shift_planning_root"
+        name="Working Hours"
+        parent="hr.menu_hr_root"
+        groups="group_shift_viewer"
+        sequence="50"/>
+
+        <menuitem
+            id="menu_hr_shift_template"
+            name="Templates"
+            action="hr_shift_template_action"
+            parent="menu_hr_shift_planning_root"
+            sequence="90"/>
+
+</odoo>
