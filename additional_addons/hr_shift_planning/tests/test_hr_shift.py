@@ -159,8 +159,8 @@ class TestHrShift(TransactionCase):
             self.Shift.with_user(self.user).get_planning_data("2026-10-01", "2026-10-31")
 
     def test_planning_data_includes_neighbour_days(self):
-        before = self._create(day=date(2026, 9, 25))  # 6 days before October
-        self._create(day=date(2026, 9, 24))  # 7 days before: not needed
+        before = self._create(day=date(2026, 9, 24))  # 7 days before October
+        self._create(day=date(2026, 9, 23))  # 8 days before: not needed
         after = self._create(day=date(2026, 11, 1))  # day after the month
         data = self.Shift.get_planning_data("2026-10-01", "2026-10-31")
         self.assertEqual({s["id"] for s in data["shifts"]}, {before.id, after.id})

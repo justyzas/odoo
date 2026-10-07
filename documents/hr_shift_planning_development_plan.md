@@ -68,7 +68,7 @@ Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuvi�
 | 4 | Lentelė: redagavimas ir išsaugojimas | FR-2.3 A–B, FR-2.4, FR-5 | ✅ Baigtas |
 | 5 | Rankinis laikas, valandų suma, filtrai | FR-2.3 C, FR-2.5 [S] | ✅ Baigtas |
 | 6 | DK įspėjimai | FR-2.6 | ✅ Baigtas |
-| 7 | Greitinimo funkcijos | FR-2.3 D–E, FR-2.5 [C], FR-2.7 | ⬜ Neprasidėjęs |
+| 7 | Greitinimo funkcijos | FR-2.3 D–E, FR-2.5 [C], FR-2.7 | ✅ Baigtas |
 | 8 | Vertimai ir galutinis patikrinimas | NFR-1–NFR-9 | ⬜ Neprasidėjęs |
 
 Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Baigtas
@@ -336,14 +336,29 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 - „Kopijuoti iš praėjusio mėnesio / savaitės“ pasirinktiems darbuotojams (į neišsaugotus pakeitimus, kad būtų galima peržiūrėti prieš išsaugant).
 - Hoot testai.
 
+**Kaip veikia:**
+- *Tempimas:* su pasirinktu teptuku nuspaudus pelę ant langelio ir tempiant, žymimas stačiakampis (mėlynas atspalvis); atleidus pelę teptukas pritaikomas visiems jo langeliams. Paprastas paspaudimas — vienas langelis, kaip anksčiau.
+- *Klaviatūra* (kai yra pažymėtas langelis, ir fokusas ne įvesties lauke): rodyklės — judėti; raidė — šablonas, kurio kodas prasideda ta raide (pakartotinai spaudžiant ta pačia raide — kitas tokį kodą turintis šablonas); Delete / Backspace — išvalyti; po raidės ar Delete žymėjimas pereina į kitą dieną (savaitę galima „surašyti“: R R R R R); Enter — atidaro šablonų sąrašą. Viewer gali tik judėti.
+- *Kopijavimas* (mygtukas „Copy“ šalia Save / Discard, tik Planner): taikoma **matomiems** (pagal paiešką / skyriaus filtrą) darbuotojams, rezultatas — neišsaugoti pakeitimai.
+  - „Previous week → week of the selected day“: savaitė (Pr–Sk), kurioje yra pažymėtas langelis, užpildoma prieš tai buvusios savaitės pamainomis (ir tuščiomis dienomis). Jei langelis nepažymėtas — pranešimas.
+  - „Previous month → this month“: kopijuojama pagal dienos numerį (1-a → 1-a). Dienos, kurių praėjusiame mėnesyje nėra (pvz. 31-a), nekeičiamos.
+- *Apatinės eilutės:* kiekvienam aktyviam šablonui (ir „Other“ — rankiniam laikui be šablono) rodoma, kiek matomų darbuotojų tą dieną dirba ta pamaina. Eilutės prilipusios prie apačios.
+
 **Testavimas:**
-- [ ] 7.1. Su teptuku „V“ tempiant per 5 dienas ir 3 darbuotojus, užpildomi 15 langelių.
-- [ ] 7.2. Rodyklės juda tarp langelių, žymėjimas seka.
-- [ ] 7.3. Paspaudus „N“ pažymėtame langelyje, priskiriama naktinė. Delete išvalo.
-- [ ] 7.4. Apatinė eilutė rodo teisingus skaičius ir atsinaujina iš karto.
-- [ ] 7.5. „Kopijuoti iš praėjusios savaitės“ užpildo savaitę kaip neišsaugotus pakeitimus. „Atšaukti“ juos atmeta.
-- [ ] 7.6. Kopijuojant mėnesį su skirtingu dienų skaičiumi, papildomos dienos lieka tuščios.
-- [ ] 7.7. Hoot testai praeina.
+- [ ] 7.1. Su teptuku „VAK“ tempiant per 5 dienas ir 3 darbuotojus: tempiant stačiakampis paryškinamas, atleidus užpildomi 15 langelių, „Save (15)“.
+- [ ] 7.2. Paprastas paspaudimas su teptuku vis dar užpildo vieną langelį.
+- [ ] 7.3. Pažymėjus langelį (be teptuko paspaudus ir Esc uždarius sąrašą, arba po teptuko paspaudimo), rodyklės juda tarp langelių, lentelė paslenka, kad pažymėtas langelis būtų matomas.
+- [ ] 7.4. Paspaudus „N“, langelyje atsiranda „NAK“, žymėjimas pereina į kitą dieną. „R R R R R“ surašo 5 dienas.
+- [ ] 7.5. Delete / Backspace išvalo langelį ir pereina į kitą dieną. Enter atidaro šablonų sąrašą.
+- [ ] 7.6. Rašant paieškos lauke ar „Custom time“ formoje, raidės ir rodyklės lentelės nekeičia.
+- [ ] 7.7. Apatinėse eilutėse rodomas kiekvienos pamainos darbuotojų skaičius kiekvieną dieną. Skaičiai atsinaujina iš karto keičiant ir priklauso nuo skyriaus filtro.
+- [ ] 7.8. Copy → „Previous week → week of the selected day“: patvirtinus, pažymėto langelio savaitė užpildoma ankstesnės savaitės pamainomis (neišsaugoti pakeitimai). „Discard“ juos atmeta.
+- [ ] 7.9. Be pažymėto langelio „Previous week“ rodo pranešimą ir nieko nekeičia.
+- [ ] 7.10. Pirmos mėnesio savaitės kopijavimas paima pamainas iš praėjusio mėnesio pabaigos.
+- [ ] 7.11. Copy → „Previous month → this month“: mėnesis užpildomas pagal dienos numerį. Pvz. spalį: spalio 31-a nekeičiama, nes rugsėjis turi 30 dienų.
+- [ ] 7.12. Su skyriaus filtru kopijavimas paliečia tik to skyriaus darbuotojus.
+- [ ] 7.13. Viewer nemato „Copy“ mygtuko.
+- [ ] 7.14. Hoot ir Python testai praeina (nebūtina).
 
 **Commit message:** `hr_shift_planning: drag selection, keyboard shortcuts and copy`
 
@@ -403,3 +418,4 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 | 2026-10-07 | Žingsnis 5 ištestuotas, visi punktai praėjo |
 | 2026-10-07 | Žingsnis 6 įgyvendintas. Ribos saugomos sistemos parametruose (`hr_shift_planning.*`), nustatymų blokas pridėtas prie Employees nustatymų (tik naujas blokas, esami nekeičiami). Lentelės duomenys papildomai apima 6 dienas prieš mėnesį ir 1 dieną po jo. Įspėjimų mygtuką ir sąrašą mato ir Viewer |
 | 2026-10-07 | Žingsnis 6 ištestuotas, visi punktai praėjo |
+| 2026-10-07 | Žingsnis 7 įgyvendintas. Su teptuku langelis dabar užpildomas atleidus pelę (ne paspaudus), kad tas pats veiksmas tiktų ir tempimui. Po raidės / Delete žymėjimas pereina į kitą dieną. Kopijavimas taikomas matomiems (filtruotiems) darbuotojams. Serveris grąžina 7 (buvo 6) dienas prieš mėnesį — reikia savaitės kopijavimui |

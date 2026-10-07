@@ -1,5 +1,14 @@
-import { Component, markRaw, onPatched, onWillStart, useState } from "@odoo/owl";
+import {
+    Component,
+    markRaw,
+    onPatched,
+    onWillStart,
+    useExternalListener,
+    useState,
+} from "@odoo/owl";
 import { ConfirmationDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
+import { Dropdown } from "@web/core/dropdown/dropdown";
+import { DropdownItem } from "@web/core/dropdown/dropdown_item";
 import { _t } from "@web/core/l10n/translation";
 import {
     deserializeDate,
@@ -52,6 +61,34 @@ function cellKey(employeeId, date) {
     return `${employeeId}|${date}`;
 }
 
+function buildTemplate(template) {
+    return {
+        ...template,
+        timeLabel: `${floatToTimeInput(template.hour_from)} - ${floatToTimeInput(template.hour_to)}`,
+        style: getColorStyle(template.color || DEFAULT_COLOR),
+    };
+}
+
+/**
+ * Shift as returned by the server -> cell value (local hours).
+ */
+function shiftToValue(shift) {
+    const start = deserializeDateTime(shift.start);
+    const end = deserializeDateTime(shift.end);
+    return {
+        templateId: shift.template_id,
+        hourFrom: start.hour + start.minute / 60,
+        hourTo: end.hour + end.minute / 60,
+        breakMinutes: shift.break_minutes,
+    };
+}
+
+function isEditableTarget(target) {
+    return (
+        ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable
+    );
+}
+
 /**
  * Lowercase, without accents: "Čiurlionis" matches "ciur".
  */
@@ -75,12 +112,13 @@ function normalizeText(text) {
  */
 export class ShiftPlanningGrid extends Component {
     static template = "hr_shift_planning.ShiftPlanningGrid";
-    static components = { Layout };
+    static components = { Dropdown, DropdownItem, Layout };
     static props = { ...standardActionServiceProps };
 
     setup() {
         this.orm = useService("orm");
         this.dialog = useService("dialog");
+        this.notification = useService("notification");
         this.picker = usePopover(ShiftTemplatePicker, { position: "bottom" });
         this.warningPopover = usePopover(ShiftWarningList, { position: "bottom" });
         this.today = DateTime.local().startOf("day");
@@ -105,18 +143,22 @@ export class ShiftPlanningGrid extends Component {
             saving: false,
             search: "",
             department: "",
+            drag: null, // { start, end }: { employeeId, date } corners of the dragged rectangle
         });
         this.loadId = 0;
         this.hoveredDay = null;
-        this.scrollToSelected = false;
+        this.scrollToSelected = null; // scrollIntoView options, set to scroll after the next patch
         onPatched(() => {
             if (this.scrollToSelected) {
-                this.scrollToSelected = false;
+                const options = this.scrollToSelected;
+                this.scrollToSelected = null;
                 document
                     .querySelector(".o_shift_planning .o_shift_selected_cell")
-                    ?.scrollIntoView({ block: "center", inline: "center" });
+                    ?.scrollIntoView(options);
             }
         });
+        useExternalListener(window, "mouseup", () => this.onWindowMouseUp());
+        useExternalListener(window, "keydown", (ev) => this.onWindowKeydown(ev));
 
         useSetupAction({
             beforeLeave: ({ forceLeave } = {}) => forceLeave || this.confirmLeave(),
@@ -185,6 +227,7 @@ export class ShiftPlanningGrid extends Component {
         }
         // Days looked at by the labour code checks: 6 days before the month
         // (7-day window) and the day after (rest before the next shift).
+        // The server also sends the 7th day before, for "copy previous week".
         const checkDays = [];
         const lastCheckDay = month.endOf("month").plus({ days: 1 }).startOf("day");
         for (let day = month.minus({ days: 6 }); day <= lastCheckDay; day = day.plus({ days: 1 })) {
@@ -203,22 +246,11 @@ export class ShiftPlanningGrid extends Component {
         const departments = [...new Set(employees.map((e) => e.department).filter(Boolean))].sort();
         const templates = {};
         for (const template of data.templates) {
-            templates[template.id] = {
-                ...template,
-                timeLabel: `${floatToTimeInput(template.hour_from)} - ${floatToTimeInput(template.hour_to)}`,
-                style: getColorStyle(template.color || DEFAULT_COLOR),
-            };
+            templates[template.id] = buildTemplate(template);
         }
         const originals = {};
         for (const shift of data.shifts) {
-            const start = deserializeDateTime(shift.start);
-            const end = deserializeDateTime(shift.end);
-            originals[cellKey(shift.employee_id, shift.date)] = {
-                templateId: shift.template_id,
-                hourFrom: start.hour + start.minute / 60,
-                hourTo: end.hour + end.minute / 60,
-                breakMinutes: shift.break_minutes,
-            };
+            originals[cellKey(shift.employee_id, shift.date)] = shiftToValue(shift);
         }
         return {
             employees,
@@ -447,7 +479,7 @@ export class ShiftPlanningGrid extends Component {
             this.state.department = "";
         }
         this.state.selected = { employeeId, date };
-        this.scrollToSelected = true;
+        this.scrollToSelected = { block: "center", inline: "center" };
     }
 
     getEmployeeTotal(employee) {
@@ -471,7 +503,15 @@ export class ShiftPlanningGrid extends Component {
         };
     }
 
-    getCellClass(employee, day, cell) {
+    /**
+     * @param {Object} employee
+     * @param {Object} day
+     * @param {Object} cell result of ``getCell``
+     * @param {Object|null} dragRange result of ``getDragRange``
+     * @param {number} rowIndex index of the employee among the visible ones
+     * @param {number} colIndex index of the day in the month
+     */
+    getCellClass(employee, day, cell, dragRange, rowIndex, colIndex) {
         const selected = this.state.selected;
         return {
             ...this.getDayClass(day),
@@ -481,7 +521,60 @@ export class ShiftPlanningGrid extends Component {
             o_shift_dirty: cell.dirty,
             o_shift_warning: cell.warnings.length > 0,
             o_shift_editable: this.state.grid.canEdit,
+            o_shift_drag_selected: Boolean(
+                dragRange &&
+                    rowIndex >= dragRange.rowFrom &&
+                    rowIndex <= dragRange.rowTo &&
+                    colIndex >= dragRange.colFrom &&
+                    colIndex <= dragRange.colTo
+            ),
         };
+    }
+
+    /**
+     * Shift count per template and day, for the summary rows under the grid.
+     *
+     * @param {Object[]} employees the visible employees
+     * @returns {Object[]} rows ``{ key, label, title, style, counts }`` where
+     *  ``counts`` maps a day key to a number of employees
+     */
+    computeDayCounts(employees) {
+        const { days, palette, templates } = this.state.grid;
+        const rows = new Map(
+            palette.map((t) => [
+                t.id,
+                { key: t.id, label: t.code, title: t.name, style: t.style, counts: {} },
+            ])
+        );
+        const other = {
+            key: "other",
+            label: _t("Other"),
+            title: _t("Custom time without template"),
+            style: "",
+            counts: {},
+        };
+        for (const employee of employees) {
+            for (const day of days) {
+                const value = this.getValue(employee.id, day.key);
+                if (!value) {
+                    continue;
+                }
+                let row = rows.get(value.templateId);
+                if (!row && templates[value.templateId]) {
+                    // archived template still used in this month
+                    const t = templates[value.templateId];
+                    row = { key: t.id, label: t.code, title: t.name, style: t.style, counts: {} };
+                    rows.set(t.id, row);
+                }
+                row ||= other;
+                row.counts[day.key] = (row.counts[day.key] || 0) + 1;
+            }
+        }
+        const result = [...rows.values()];
+        if (Object.keys(other.counts).length) {
+            result.push(other);
+        }
+        return result;
     }
 
     isEmployeeSelected(employee) {
@@ -567,26 +660,300 @@ export class ShiftPlanningGrid extends Component {
     }
 
     /**
+     * @returns {Promise<boolean>} whether the user confirmed
+     */
+    askConfirmation({ title, body, confirmLabel, cancelLabel }) {
+        return new Promise((resolve) => {
+            this.dialog.add(
+                ConfirmationDialog,
+                {
+                    title,
+                    body,
+                    confirmLabel,
+                    confirm: () => resolve(true),
+                    cancelLabel,
+                    cancel: () => resolve(false),
+                },
+                { onClose: () => resolve(false) }
+            );
+        });
+    }
+
+    /**
      * @returns {Promise<boolean>} whether it is fine to drop the pending changes
      */
     confirmDiscard() {
         if (!this.hasChanges) {
             return Promise.resolve(true);
         }
-        return new Promise((resolve) => {
-            this.dialog.add(
-                ConfirmationDialog,
-                {
-                    title: _t("Unsaved changes"),
-                    body: _t("You have unsaved changes in the planning. Discard them?"),
-                    confirmLabel: _t("Discard"),
-                    confirm: () => resolve(true),
-                    cancelLabel: _t("Stay"),
-                    cancel: () => resolve(false),
-                },
-                { onClose: () => resolve(false) }
-            );
+        return this.askConfirmation({
+            title: _t("Unsaved changes"),
+            body: _t("You have unsaved changes in the planning. Discard them?"),
+            confirmLabel: _t("Discard"),
+            cancelLabel: _t("Stay"),
         });
+    }
+
+    // ------------------------------------------------------------------
+    // Copy
+    // ------------------------------------------------------------------
+
+    /**
+     * Copy the week before into the week of the selected cell (the part of
+     * it in the current month), for the visible employees. Empty days are
+     * copied too. The result is a pending change, saved with "Save".
+     */
+    async copyPreviousWeek() {
+        const selected = this.state.selected;
+        if (!selected) {
+            this.notification.add(_t("Select a day of the week to fill first."), {
+                type: "warning",
+            });
+            return;
+        }
+        const monthDays = new Set(this.state.grid.days.map((d) => d.key));
+        const monday = deserializeDate(selected.date).startOf("week");
+        const targets = [...Array(7).keys()]
+            .map((i) => monday.plus({ days: i }))
+            .filter((day) => monthDays.has(serializeDate(day)));
+        const employees = this.visibleEmployees;
+        const confirmed = await this.askConfirmation({
+            title: _t("Copy previous week"),
+            body: _t(
+                "Copy the shifts of the week before to %(from)s - %(to)s for %(count)s employees? Shifts already planned on these days are replaced. Nothing is saved until you click Save.",
+                {
+                    from: formatDate(targets[0]),
+                    to: formatDate(targets[targets.length - 1]),
+                    count: employees.length,
+                }
+            ),
+            confirmLabel: _t("Copy"),
+            cancelLabel: _t("Cancel"),
+        });
+        if (!confirmed) {
+            return;
+        }
+        for (const employee of employees) {
+            for (const target of targets) {
+                const source = this.getValue(
+                    employee.id,
+                    serializeDate(target.minus({ days: 7 }))
+                );
+                this.applyChange(employee.id, serializeDate(target), source && { ...source });
+            }
+        }
+    }
+
+    /**
+     * Copy the previous month day by day (1st to 1st, ...) for the visible
+     * employees. Days missing in the previous month (e.g. the 31st) are not
+     * changed. The result is a pending change, saved with "Save".
+     */
+    async copyPreviousMonth() {
+        const month = this.state.month;
+        const previous = month.minus({ months: 1 });
+        const employees = this.visibleEmployees;
+        const confirmed = await this.askConfirmation({
+            title: _t("Copy previous month"),
+            body: _t(
+                "Copy the shifts of %(source)s to %(target)s for %(count)s employees? Shifts already planned this month are replaced. Nothing is saved until you click Save.",
+                {
+                    source: previous.toFormat("LLLL yyyy"),
+                    target: this.monthLabel,
+                    count: employees.length,
+                }
+            ),
+            confirmLabel: _t("Copy"),
+            cancelLabel: _t("Cancel"),
+        });
+        if (!confirmed) {
+            return;
+        }
+        const data = await this.orm.call("hr.shift", "get_planning_data", [
+            serializeDate(previous),
+            serializeDate(previous.endOf("month")),
+        ]);
+        if (!this.state.month.equals(month)) {
+            return; // the month was changed meanwhile
+        }
+        const templates = this.state.grid.templates;
+        for (const template of data.templates) {
+            templates[template.id] ||= buildTemplate(template);
+        }
+        const source = {};
+        for (const shift of data.shifts) {
+            const date = deserializeDate(shift.date);
+            if (date.hasSame(previous, "month")) {
+                source[cellKey(shift.employee_id, date.day)] = shiftToValue(shift);
+            }
+        }
+        for (const employee of employees) {
+            for (const day of this.state.grid.days) {
+                if (day.day > previous.daysInMonth) {
+                    continue;
+                }
+                const value = source[cellKey(employee.id, day.day)];
+                this.applyChange(employee.id, day.key, value || null);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Drag selection and keyboard
+    // ------------------------------------------------------------------
+
+    /**
+     * Rectangle being dragged, as index ranges over the visible employees
+     * and the days of the month, or null.
+     */
+    getDragRange(employees) {
+        const drag = this.state.drag;
+        if (!drag) {
+            return null;
+        }
+        const rows = employees.map((e) => e.id);
+        const cols = this.state.grid.days.map((d) => d.key);
+        const r1 = rows.indexOf(drag.start.employeeId);
+        const r2 = rows.indexOf(drag.end.employeeId);
+        const c1 = cols.indexOf(drag.start.date);
+        const c2 = cols.indexOf(drag.end.date);
+        if ([r1, r2, c1, c2].includes(-1)) {
+            return null;
+        }
+        return {
+            rowFrom: Math.min(r1, r2),
+            rowTo: Math.max(r1, r2),
+            colFrom: Math.min(c1, c2),
+            colTo: Math.max(c1, c2),
+        };
+    }
+
+    onGridMouseDown(ev) {
+        if (ev.button !== 0 || !this.state.grid.canEdit || this.state.brush === null) {
+            return;
+        }
+        const cell = ev.target.closest("td.o_shift_cell");
+        if (!cell) {
+            return;
+        }
+        ev.preventDefault(); // no text selection while dragging
+        const point = { employeeId: parseInt(cell.dataset.employeeId), date: cell.dataset.day };
+        this.state.drag = { start: point, end: point };
+    }
+
+    /**
+     * End of a brush click or drag: apply the brush to the dragged rectangle
+     * (a single cell for a simple click).
+     */
+    onWindowMouseUp() {
+        const drag = this.state.drag;
+        if (!drag) {
+            return;
+        }
+        const employees = this.visibleEmployees;
+        const range = this.getDragRange(employees);
+        this.state.drag = null;
+        if (!range) {
+            return;
+        }
+        const days = this.state.grid.days;
+        for (let row = range.rowFrom; row <= range.rowTo; row++) {
+            for (let col = range.colFrom; col <= range.colTo; col++) {
+                this.applySelection(employees[row].id, days[col].key, this.state.brush);
+            }
+        }
+    }
+
+    moveSelection(rowDelta, colDelta) {
+        const employees = this.visibleEmployees;
+        const days = this.state.grid.days;
+        const selected = this.state.selected;
+        if (!employees.length || !selected) {
+            return;
+        }
+        const clamp = (value, max) => Math.max(0, Math.min(value, max));
+        const row = Math.max(employees.findIndex((e) => e.id === selected.employeeId), 0);
+        const col = Math.max(days.findIndex((d) => d.key === selected.date), 0);
+        this.state.selected = {
+            employeeId: employees[clamp(row + rowDelta, employees.length - 1)].id,
+            date: days[clamp(col + colDelta, days.length - 1)].key,
+        };
+        this.scrollToSelected = { block: "nearest", inline: "nearest" };
+    }
+
+    /**
+     * Template whose code starts with the typed letter. Typing the same
+     * letter again on a cell cycles through the templates starting with it.
+     */
+    getTemplateForLetter(letter, currentValue) {
+        const matches = this.state.grid.palette.filter((t) =>
+            t.code.toUpperCase().startsWith(letter.toUpperCase())
+        );
+        if (!matches.length) {
+            return null;
+        }
+        const index = matches.findIndex(
+            (t) =>
+                currentValue && t.id === currentValue.templateId && !this.isCustom(currentValue)
+        );
+        return matches[(index + 1) % matches.length];
+    }
+
+    /**
+     * Keyboard on the selected cell: arrows move; for planners, a letter
+     * applies the template whose code starts with it, Delete / Backspace
+     * clears, Enter opens the picker. After a letter or Delete the selection
+     * moves to the next day, so a week can be typed in one go ("RRRRR").
+     */
+    onWindowKeydown(ev) {
+        const selected = this.state.selected;
+        if (
+            !selected ||
+            ev.ctrlKey ||
+            ev.metaKey ||
+            ev.altKey ||
+            isEditableTarget(ev.target) ||
+            this.picker.isOpen ||
+            this.warningPopover.isOpen ||
+            document.querySelector(".modal")
+        ) {
+            return;
+        }
+        const moves = {
+            ArrowUp: [-1, 0],
+            ArrowDown: [1, 0],
+            ArrowLeft: [0, -1],
+            ArrowRight: [0, 1],
+        };
+        if (ev.key in moves) {
+            ev.preventDefault();
+            this.moveSelection(...moves[ev.key]);
+            return;
+        }
+        if (!this.state.grid.canEdit) {
+            return;
+        }
+        const { employeeId, date } = selected;
+        if (ev.key === "Delete" || ev.key === "Backspace") {
+            ev.preventDefault();
+            this.applySelection(employeeId, date, false);
+            this.moveSelection(0, 1);
+        } else if (ev.key === "Enter") {
+            ev.preventDefault();
+            const cell = document.querySelector(
+                `.o_shift_planning .o_shift_cell[data-employee-id="${employeeId}"][data-day="${date}"]`
+            );
+            if (cell) {
+                this.openPicker(cell, employeeId, date);
+            }
+        } else if (ev.key.length === 1 && /\p{L}/u.test(ev.key)) {
+            const template = this.getTemplateForLetter(ev.key, this.getValue(employeeId, date));
+            if (template) {
+                ev.preventDefault();
+                this.applySelection(employeeId, date, template.id);
+                this.moveSelection(0, 1);
+            }
+        }
     }
 
     async confirmLeave() {
@@ -628,25 +995,25 @@ export class ShiftPlanningGrid extends Component {
     }
 
     onGridClick(ev) {
-        const cell = ev.target.closest("td[data-day]");
+        const cell = ev.target.closest("td.o_shift_cell");
         if (!cell) {
             return;
         }
         const employeeId = parseInt(cell.dataset.employeeId);
         const date = cell.dataset.day;
         this.state.selected = { employeeId, date };
-        if (!this.state.grid.canEdit) {
-            return;
+        // With a brush, the cell was already painted on mouseup
+        if (this.state.grid.canEdit && this.state.brush === null) {
+            this.openPicker(cell, employeeId, date);
         }
-        if (this.state.brush !== null) {
-            this.applySelection(employeeId, date, this.state.brush);
-        } else {
-            this.picker.open(cell, {
-                templates: this.state.grid.palette,
-                current: this.getValue(employeeId, date) || undefined,
-                onSelect: (selection) => this.applySelection(employeeId, date, selection),
-            });
-        }
+    }
+
+    openPicker(cell, employeeId, date) {
+        this.picker.open(cell, {
+            templates: this.state.grid.palette,
+            current: this.getValue(employeeId, date) || undefined,
+            onSelect: (selection) => this.applySelection(employeeId, date, selection),
+        });
     }
 
     /**
@@ -658,6 +1025,13 @@ export class ShiftPlanningGrid extends Component {
         const day = cell ? cell.dataset.day : null;
         if (day !== this.hoveredDay) {
             this.setColumnHover(ev.currentTarget, day);
+        }
+        const drag = this.state.drag;
+        if (drag && cell && cell.dataset.employeeId) {
+            const employeeId = parseInt(cell.dataset.employeeId);
+            if (employeeId !== drag.end.employeeId || day !== drag.end.date) {
+                drag.end = { employeeId, date: day };
+            }
         }
     }
 

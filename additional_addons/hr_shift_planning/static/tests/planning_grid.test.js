@@ -1,6 +1,15 @@
 import { defineMailModels } from "@mail/../tests/mail_test_helpers";
 import { beforeEach, describe, expect, test } from "@odoo/hoot";
-import { click, edit, queryAll, select } from "@odoo/hoot-dom";
+import {
+    click,
+    edit,
+    hover,
+    pointerDown,
+    pointerUp,
+    press,
+    queryAll,
+    select,
+} from "@odoo/hoot-dom";
 import { animationFrame, mockDate, mockTimeZone } from "@odoo/hoot-mock";
 import { defineActions, getService, mountWithCleanup, onRpc } from "@web/../tests/web_test_helpers";
 import { WebClient } from "@web/webclient/webclient";
@@ -74,10 +83,14 @@ const BOB_13 = '.o_shift_cell[data-employee-id="2"][data-day="2026-10-13"]';
 let loadRequests;
 let saveRequests;
 
+/**
+ * @param {Object} [options] see ``makePlanningData``; ``dataFor(args)`` may
+ *  return the data for a given request instead
+ */
 async function openGrid(options) {
     onRpc("hr.shift", "get_planning_data", ({ args }) => {
         loadRequests.push(args);
-        return makePlanningData(options);
+        return options?.dataFor?.(args) || makePlanningData(options);
     });
     onRpc("hr.shift", "save_planning_changes", ({ args }) => {
         saveRequests.push(args[0]);
@@ -308,6 +321,175 @@ describe("labour code warnings", () => {
 
         expect(".o_shift_warning_list").toHaveCount(0);
         expect(cell(1, "2026-10-15")).toHaveClass("o_shift_selected_cell");
+    });
+});
+
+describe("faster planning", () => {
+    const cell = (employeeId, date) =>
+        `.o_shift_cell[data-employee-id="${employeeId}"][data-day="${date}"]`;
+
+    /** Select a cell without editing it: click opens the picker, Escape closes it. */
+    async function selectCell(selector) {
+        await click(selector);
+        await animationFrame();
+        await press("Escape");
+        await animationFrame();
+    }
+
+    test("dragging with a brush paints a rectangle", async () => {
+        await openGrid();
+
+        await click('.o_shift_brush[data-template-id="11"]');
+        await animationFrame();
+        await pointerDown(BOB_12);
+        await hover(cell(1, "2026-10-14"));
+        await animationFrame();
+        expect(".o_shift_drag_selected").toHaveCount(6);
+        await pointerUp(cell(1, "2026-10-14"));
+        await animationFrame();
+
+        expect(".o_shift_drag_selected").toHaveCount(0);
+        expect(".o_shift_dirty").toHaveCount(6);
+        for (const employeeId of [1, 2]) {
+            for (const day of ["12", "13", "14"]) {
+                expect(`${cell(employeeId, `2026-10-${day}`)} .o_shift_code`).toHaveText("N");
+            }
+        }
+        expect(`${ANN_15} .o_shift_code`).toHaveText("M");
+        expect(".o_shift_save").toHaveText("Save (6)");
+    });
+
+    test("keyboard: arrows move, letters apply a template, Delete clears", async () => {
+        await openGrid();
+
+        await selectCell(BOB_12);
+        expect(".o_shift_template_picker").toHaveCount(0);
+        expect(BOB_12).toHaveClass("o_shift_selected_cell");
+
+        await press("n");
+        await animationFrame();
+        expect(`${BOB_12} .o_shift_code`).toHaveText("N");
+        expect(BOB_13).toHaveClass("o_shift_selected_cell"); // moved to the next day
+
+        await press("m");
+        await animationFrame();
+        expect(`${BOB_13} .o_shift_code`).toHaveText("M");
+
+        // back to the 12th (selection is on the 14th)
+        await press("ArrowLeft");
+        await animationFrame();
+        await press("ArrowLeft");
+        await animationFrame();
+        await press("Delete");
+        await animationFrame();
+        expect(`${BOB_12} .o_shift_chip`).toHaveCount(0);
+        expect(BOB_13).toHaveClass("o_shift_selected_cell");
+
+        await press("ArrowUp");
+        await animationFrame();
+        expect(cell(1, "2026-10-13")).toHaveClass("o_shift_selected_cell");
+        await press("ArrowUp"); // already on the first row
+        await animationFrame();
+        expect(cell(1, "2026-10-13")).toHaveClass("o_shift_selected_cell");
+
+        await press("Enter");
+        await animationFrame();
+        expect(".o_shift_template_picker").toHaveCount(1);
+    });
+
+    test("keyboard: viewer can move but not edit", async () => {
+        await openGrid({ canEdit: false });
+
+        await click(BOB_12);
+        await animationFrame();
+        await press("n");
+        await animationFrame();
+        expect(`${BOB_12} .o_shift_chip`).toHaveCount(0);
+        await press("ArrowRight");
+        await animationFrame();
+        expect(BOB_13).toHaveClass("o_shift_selected_cell");
+    });
+
+    test("summary rows count employees per template and day", async () => {
+        await openGrid();
+
+        const morning15 = '.o_shift_count_row[data-row="10"] .o_shift_count[data-day="2026-10-15"]';
+        expect(".o_shift_count_row").toHaveCount(2); // M and N
+        expect(morning15).toHaveText("1");
+
+        await click('.o_shift_brush[data-template-id="10"]');
+        await animationFrame();
+        await click(cell(2, "2026-10-15"));
+        await animationFrame();
+        expect(morning15).toHaveText("2");
+
+        // follows the employee filter
+        await select("Warehouse", { target: ".o_shift_department" });
+        await animationFrame();
+        expect(morning15).toHaveText("1");
+    });
+
+    test("copy previous week into the week of the selected day", async () => {
+        await openGrid();
+
+        // Ann has a morning on Thu 15th; fill the week of Wed 21st
+        await selectCell(cell(2, "2026-10-21"));
+        await click(".o_shift_copy_btn");
+        await animationFrame();
+        await click(".o_shift_copy_week");
+        await animationFrame();
+        expect(".modal").toHaveCount(1);
+        await click(".modal-footer .btn-primary");
+        await animationFrame();
+
+        expect(`${cell(1, "2026-10-22")} .o_shift_code`).toHaveText("M");
+        expect(cell(1, "2026-10-22")).toHaveClass("o_shift_dirty");
+        expect(".o_shift_dirty").toHaveCount(1);
+        expect(saveRequests).toEqual([]);
+    });
+
+    test("copy previous week needs a selected day", async () => {
+        await openGrid();
+
+        await click(".o_shift_copy_btn");
+        await animationFrame();
+        await click(".o_shift_copy_week");
+        await animationFrame();
+        expect(".modal").toHaveCount(0);
+        expect(".o_notification").toHaveCount(1);
+    });
+
+    test("copy previous month day by day", async () => {
+        const september = {
+            ...makePlanningData(),
+            shifts: [
+                {
+                    id: 200,
+                    employee_id: 2,
+                    date: "2026-09-30",
+                    template_id: 11,
+                    start: "2026-09-30 19:00:00",
+                    end: "2026-10-01 03:00:00",
+                    break_minutes: 30,
+                    duration: 7.5,
+                    is_custom: false,
+                },
+            ],
+        };
+        await openGrid({ dataFor: (args) => (args[0] === "2026-09-01" ? september : null) });
+
+        await click(".o_shift_copy_btn");
+        await animationFrame();
+        await click(".o_shift_copy_month");
+        await animationFrame();
+        await click(".modal-footer .btn-primary");
+        await animationFrame();
+
+        expect(loadRequests.at(-1)).toEqual(["2026-09-01", "2026-09-30"]);
+        expect(`${cell(2, "2026-10-30")} .o_shift_code`).toHaveText("N");
+        // Ann's morning of the 15th is removed (nothing on Sept 15th)
+        expect(`${ANN_15} .o_shift_chip`).toHaveCount(0);
+        expect(".o_shift_dirty").toHaveCount(2);
     });
 });
 

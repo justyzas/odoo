@@ -166,9 +166,10 @@ class HrShift(models.Model):
         :param date_from: first day, ``YYYY-MM-DD``
         :param date_to: last day (inclusive), ``YYYY-MM-DD``
 
-        Shifts are also returned for the 6 days before and the day after the
+        Shifts are also returned for the 7 days before and the day after the
         range: the labour code checks look at the previous 7 days and at the
-        rest before the next shift.
+        rest before the next shift, and "copy previous week" may read the
+        week before the first day.
         """
         date_from = fields.Date.to_date(date_from)
         date_to = fields.Date.to_date(date_to)
@@ -182,7 +183,7 @@ class HrShift(models.Model):
         )
         shifts = self.search_read(
             [
-                ("date", ">=", date_from - timedelta(days=6)),
+                ("date", ">=", date_from - timedelta(days=7)),
                 ("date", "<=", date_to + timedelta(days=1)),
                 ("employee_id", "in", [e["id"] for e in employees]),
             ],

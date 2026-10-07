@@ -13,6 +13,19 @@
                             <button class="btn btn-secondary o_shift_discard" t-att-disabled="!hasChanges or state.saving" t-on-click="discard">
                                 Discard
                             </button>
+                            <Dropdown>
+                                <button class="btn btn-secondary o_shift_copy_btn" title="Copy shifts">
+                                    <i class="fa fa-clone me-1"/>Copy
+                                </button>
+                                <t t-set-slot="content">
+                                    <DropdownItem class="'o_shift_copy_week'" onSelected="() => this.copyPreviousWeek()">
+                                        Previous week → week of the selected day
+                                    </DropdownItem>
+                                    <DropdownItem class="'o_shift_copy_month'" onSelected="() => this.copyPreviousMonth()">
+                                        Previous month → this month
+                                    </DropdownItem>
+                                </t>
+                            </Dropdown>
                         </t>
                         <t t-set="warningCount" t-value="computeWarnings().issues.length"/>
                         <button t-if="warningCount" class="btn btn-warning o_shift_warnings_btn"
@@ -57,12 +70,16 @@
                 </t>
 
                 <t t-set="warnings" t-value="computeWarnings()"/>
+                <t t-set="employees" t-value="visibleEmployees"/>
+                <t t-set="dragRange" t-value="getDragRange(employees)"/>
                 <div t-if="!state.grid.employees.length" class="o_view_nocontent">
                     <div class="o_nocontent_help">
                         <p class="o_view_nocontent_empty_folder">No employees</p>
                     </div>
                 </div>
                 <table t-else="" class="o_shift_grid"
+                       t-att-class="{ o_shift_dragging: state.drag }"
+                       t-on-mousedown="onGridMouseDown"
                        t-on-click="onGridClick"
                        t-on-mouseover="onGridMouseOver"
                        t-on-mouseleave="onGridMouseLeave">
@@ -91,14 +108,14 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr t-foreach="visibleEmployees" t-as="employee" t-key="employee.id">
+                        <tr t-foreach="employees" t-as="employee" t-key="employee.id">
                             <th class="o_shift_employee" t-att-class="{ o_shift_selected_employee: isEmployeeSelected(employee) }">
                                 <div class="o_shift_employee_name text-truncate" t-esc="employee.name"/>
                                 <div t-if="employee.info" class="o_shift_employee_info text-truncate" t-esc="employee.info"/>
                             </th>
                             <t t-foreach="state.grid.days" t-as="day" t-key="day.key">
                                 <t t-set="cell" t-value="getCell(employee, day, warnings)"/>
-                                <td class="o_shift_cell" t-att-class="getCellClass(employee, day, cell)"
+                                <td class="o_shift_cell" t-att-class="getCellClass(employee, day, cell, dragRange, employee_index, day_index)"
                                     t-att-data-day="day.key" t-att-data-employee-id="employee.id"
                                     t-att-title="cell.title">
                                     <div t-if="cell.shift" class="o_shift_chip" t-att-style="cell.shift.style">
@@ -110,6 +127,18 @@
                             <td class="o_shift_total" t-esc="getEmployeeTotal(employee)"/>
                         </tr>
                     </tbody>
+                    <tfoot>
+                        <tr t-foreach="computeDayCounts(employees)" t-as="countRow" t-key="countRow.key"
+                            class="o_shift_count_row" t-att-data-row="countRow.key">
+                            <th class="o_shift_count_label" t-att-title="countRow.title">
+                                <span class="o_shift_swatch" t-att-style="countRow.style" t-esc="countRow.label"/>
+                            </th>
+                            <td t-foreach="state.grid.days" t-as="day" t-key="day.key"
+                                class="o_shift_count" t-att-data-day="day.key"
+                                t-esc="countRow.counts[day.key] or ''"/>
+                            <td class="o_shift_total"/>
+                        </tr>
+                    </tfoot>
                 </table>
             </Layout>
         </div>
