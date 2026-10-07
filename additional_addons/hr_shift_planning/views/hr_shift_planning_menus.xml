@@ -15,12 +15,13 @@
             parent="menu_hr_shift_planning_root"
             sequence="10"/>
 
-        <!-- Temporary: shifts can only be created here until the grid is editable (step 4) -->
+        <!-- Raw list of shifts, for troubleshooting and export: debug mode only -->
         <menuitem
             id="menu_hr_shift_list"
             name="Shifts (list)"
             action="hr_shift_action"
             parent="menu_hr_shift_planning_root"
+            groups="base.group_no_one"
             sequence="20"/>
 
         <menuitem

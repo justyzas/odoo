@@ -1,5 +1,5 @@
 import { defineMailModels } from "@mail/../tests/mail_test_helpers";
-import { describe, expect, test } from "@odoo/hoot";
+import { beforeEach, describe, expect, test } from "@odoo/hoot";
 import { click, queryAll } from "@odoo/hoot-dom";
 import { animationFrame, mockDate } from "@odoo/hoot-mock";
 import { defineActions, getService, mountWithCleanup, onRpc } from "@web/../tests/web_test_helpers";
@@ -17,107 +17,289 @@ defineActions([
 ]);
 defineMailModels();
 
-const PLANNING_DATA = {
-    employees: [
-        { id: 1, name: "Ann", job_title: "Operator", department: "Production" },
-        { id: 2, name: "Bob", job_title: "", department: "Warehouse" },
-    ],
-    templates: [
-        { id: 10, name: "Morning", code: "M", color: "#FFE08A", duration: 7.5, active: true },
-    ],
-    shifts: [
-        {
-            id: 100,
-            employee_id: 1,
-            date: "2026-10-15",
-            template_id: 10,
-            start: "2026-10-15 03:00:00",
-            end: "2026-10-15 11:00:00",
-            break_minutes: 30,
-            duration: 7.5,
-            is_custom: false,
-        },
-    ],
-    holidays: [{ date: "2026-10-20", name: "Test holiday" }],
-};
+function makePlanningData({ canEdit = true } = {}) {
+    return {
+        employees: [
+            { id: 1, name: "Ann", job_title: "Operator", department: "Production" },
+            { id: 2, name: "Bob", job_title: "", department: "Warehouse" },
+        ],
+        templates: [
+            {
+                id: 10,
+                name: "Morning",
+                code: "M",
+                color: "#FFE08A",
+                hour_from: 6,
+                hour_to: 14,
+                break_minutes: 30,
+                duration: 7.5,
+                active: true,
+            },
+            {
+                id: 11,
+                name: "Night",
+                code: "N",
+                color: "#1F3A93",
+                hour_from: 22,
+                hour_to: 6,
+                break_minutes: 30,
+                duration: 7.5,
+                active: true,
+            },
+        ],
+        shifts: [
+            {
+                id: 100,
+                employee_id: 1,
+                date: "2026-10-15",
+                template_id: 10,
+                start: "2026-10-15 03:00:00",
+                end: "2026-10-15 11:00:00",
+                break_minutes: 30,
+                duration: 7.5,
+                is_custom: false,
+            },
+        ],
+        holidays: [{ date: "2026-10-20", name: "Test holiday" }],
+        can_edit: canEdit,
+    };
+}
 
-async function openGrid(requests = []) {
+const ANN_15 = '.o_shift_cell[data-employee-id="1"][data-day="2026-10-15"]';
+const BOB_12 = '.o_shift_cell[data-employee-id="2"][data-day="2026-10-12"]';
+const BOB_13 = '.o_shift_cell[data-employee-id="2"][data-day="2026-10-13"]';
+
+let loadRequests;
+let saveRequests;
+
+async function openGrid(options) {
     onRpc("hr.shift", "get_planning_data", ({ args }) => {
-        requests.push(args);
-        return PLANNING_DATA;
+        loadRequests.push(args);
+        return makePlanningData(options);
+    });
+    onRpc("hr.shift", "save_planning_changes", ({ args }) => {
+        saveRequests.push(args[0]);
+        return true;
     });
     await mountWithCleanup(WebClient);
     await getService("action").doAction(1);
 }
 
-test("renders employees, days of the month and shifts", async () => {
+beforeEach(() => {
     mockDate("2026-10-07 10:00:00");
-    const requests = [];
-    await openGrid(requests);
-
-    expect(requests).toEqual([["2026-10-01", "2026-10-31"]]);
-    expect(".o_shift_month").toHaveText(/October 2026/i);
-    expect(".o_shift_employee_name").toHaveCount(2);
-    expect(".o_shift_day_header").toHaveCount(31);
-    expect(".o_shift_cell").toHaveCount(62);
-    expect(".o_shift_chip").toHaveCount(1);
-    expect('.o_shift_cell[data-employee-id="1"][data-day="2026-10-15"] .o_shift_code').toHaveText("M");
-    expect('.o_shift_cell[data-employee-id="1"][data-day="2026-10-15"] .o_shift_hours').toHaveText("7.5h");
+    loadRequests = [];
+    saveRequests = [];
 });
 
-test("marks today, weekends and holidays", async () => {
-    mockDate("2026-10-07 10:00:00");
-    await openGrid();
+describe("display", () => {
+    test("renders employees, days of the month and shifts", async () => {
+        await openGrid();
 
-    expect('.o_shift_day_header[data-day="2026-10-07"]').toHaveClass("o_shift_today");
-    // 2026-10-03 is a Saturday
-    expect('.o_shift_day_header[data-day="2026-10-03"]').toHaveClass("o_shift_weekend");
-    expect('.o_shift_day_header[data-day="2026-10-20"]').toHaveClass("o_shift_holiday");
-    expect('.o_shift_day_header[data-day="2026-10-20"]').toHaveAttribute("title", "Test holiday");
+        expect(loadRequests).toEqual([["2026-10-01", "2026-10-31"]]);
+        expect(".o_shift_month").toHaveText(/October 2026/i);
+        expect(".o_shift_employee_name").toHaveCount(2);
+        expect(".o_shift_day_header").toHaveCount(31);
+        expect(".o_shift_cell").toHaveCount(62);
+        expect(".o_shift_chip").toHaveCount(1);
+        expect(`${ANN_15} .o_shift_code`).toHaveText("M");
+        expect(`${ANN_15} .o_shift_hours`).toHaveText("7.5h");
+    });
+
+    test("marks today, weekends and holidays", async () => {
+        await openGrid();
+
+        expect('.o_shift_day_header[data-day="2026-10-07"]').toHaveClass("o_shift_today");
+        // 2026-10-03 is a Saturday
+        expect('.o_shift_day_header[data-day="2026-10-03"]').toHaveClass("o_shift_weekend");
+        expect('.o_shift_day_header[data-day="2026-10-20"]').toHaveClass("o_shift_holiday");
+        expect('.o_shift_day_header[data-day="2026-10-20"]').toHaveAttribute("title", "Test holiday");
+    });
+
+    test("clicking a cell highlights the cell, its employee and its day", async () => {
+        await openGrid({ canEdit: false });
+
+        await click(BOB_12);
+        await animationFrame();
+
+        expect(BOB_12).toHaveClass("o_shift_selected_cell");
+        expect(".o_shift_selected_cell").toHaveCount(1);
+        expect(".o_shift_selected_employee .o_shift_employee_name").toHaveText("Bob");
+        expect("thead .o_shift_selected_day").toHaveCount(1);
+        expect("thead .o_shift_selected_day").toHaveAttribute("data-day", "2026-10-12");
+    });
+
+    test("month navigation loads the previous, next and current month", async () => {
+        await openGrid();
+
+        await click(".o_shift_next");
+        await animationFrame();
+        expect(".o_shift_month").toHaveText(/November 2026/i);
+        expect(queryAll(".o_shift_day_header")).toHaveLength(30);
+
+        await click(".o_shift_prev");
+        await animationFrame();
+        await click(".o_shift_prev");
+        await animationFrame();
+        expect(".o_shift_month").toHaveText(/September 2026/i);
+
+        await click(".o_shift_today_btn");
+        await animationFrame();
+        expect(".o_shift_month").toHaveText(/October 2026/i);
+
+        expect(loadRequests).toEqual([
+            ["2026-10-01", "2026-10-31"],
+            ["2026-11-01", "2026-11-30"],
+            ["2026-10-01", "2026-10-31"],
+            ["2026-09-01", "2026-09-30"],
+            ["2026-10-01", "2026-10-31"],
+        ]);
+    });
 });
 
-test("clicking a cell highlights the cell, its employee and its day", async () => {
-    mockDate("2026-10-07 10:00:00");
-    await openGrid();
+describe("editing", () => {
+    test("viewer: no brushes, no save button, no popover", async () => {
+        await openGrid({ canEdit: false });
 
-    await click('.o_shift_cell[data-employee-id="2"][data-day="2026-10-12"]');
-    await animationFrame();
+        expect(".o_shift_brush").toHaveCount(0);
+        expect(".o_shift_save").toHaveCount(0);
+        await click(BOB_12);
+        await animationFrame();
+        expect(".o_shift_template_picker").toHaveCount(0);
+        expect(`${BOB_12} .o_shift_chip`).toHaveCount(0);
+    });
 
-    expect('.o_shift_cell[data-employee-id="2"][data-day="2026-10-12"]').toHaveClass(
-        "o_shift_selected_cell"
-    );
-    expect(".o_shift_selected_cell").toHaveCount(1);
-    expect(".o_shift_selected_employee").toHaveCount(1);
-    expect(".o_shift_selected_employee .o_shift_employee_name").toHaveText("Bob");
-    expect("thead .o_shift_selected_day").toHaveCount(1);
-    expect("thead .o_shift_selected_day").toHaveAttribute("data-day", "2026-10-12");
-});
+    test("brush: pick a template, then each click fills a cell", async () => {
+        await openGrid();
 
-test("month navigation loads the previous, next and current month", async () => {
-    mockDate("2026-10-07 10:00:00");
-    const requests = [];
-    await openGrid(requests);
+        expect(".o_shift_brush").toHaveCount(3); // M, N, Clear
+        expect(".o_shift_save").not.toBeEnabled();
 
-    await click(".o_shift_next");
-    await animationFrame();
-    expect(".o_shift_month").toHaveText(/November 2026/i);
-    expect(queryAll(".o_shift_day_header")).toHaveLength(30);
+        await click('.o_shift_brush[data-template-id="11"]');
+        await animationFrame();
+        expect('.o_shift_brush[data-template-id="11"]').toHaveClass("o_shift_brush_active");
 
-    await click(".o_shift_prev");
-    await animationFrame();
-    await click(".o_shift_prev");
-    await animationFrame();
-    expect(".o_shift_month").toHaveText(/September 2026/i);
+        await click(BOB_12);
+        await animationFrame();
+        await click(BOB_13);
+        await animationFrame();
 
-    await click(".o_shift_today_btn");
-    await animationFrame();
-    expect(".o_shift_month").toHaveText(/October 2026/i);
+        expect(`${BOB_12} .o_shift_code`).toHaveText("N");
+        expect(`${BOB_13} .o_shift_code`).toHaveText("N");
+        expect(BOB_12).toHaveClass("o_shift_dirty");
+        expect(".o_shift_template_picker").toHaveCount(0);
+        expect(".o_shift_save").toBeEnabled();
+        expect(".o_shift_save").toHaveText("Save (2)");
+    });
 
-    expect(requests).toEqual([
-        ["2026-10-01", "2026-10-31"],
-        ["2026-11-01", "2026-11-30"],
-        ["2026-10-01", "2026-10-31"],
-        ["2026-09-01", "2026-09-30"],
-        ["2026-10-01", "2026-10-31"],
-    ]);
+    test("clicking the active brush again deselects it", async () => {
+        await openGrid();
+
+        await click('.o_shift_brush[data-template-id="10"]');
+        await animationFrame();
+        await click('.o_shift_brush[data-template-id="10"]');
+        await animationFrame();
+        expect(".o_shift_brush_active").toHaveCount(0);
+    });
+
+    test("without brush: clicking a cell opens the template picker", async () => {
+        await openGrid();
+
+        await click(BOB_12);
+        await animationFrame();
+        expect(".o_shift_template_picker").toHaveCount(1);
+        expect(".o_shift_picker_template").toHaveCount(2);
+
+        await click('.o_shift_picker_template[data-template-id="10"]');
+        await animationFrame();
+        expect(".o_shift_template_picker").toHaveCount(0);
+        expect(`${BOB_12} .o_shift_code`).toHaveText("M");
+        expect(BOB_12).toHaveClass("o_shift_dirty");
+    });
+
+    test("clear brush removes a shift; re-applying the original undoes the change", async () => {
+        await openGrid();
+
+        await click(".o_shift_brush_clear");
+        await animationFrame();
+        await click(ANN_15);
+        await animationFrame();
+        expect(`${ANN_15} .o_shift_chip`).toHaveCount(0);
+        expect(ANN_15).toHaveClass("o_shift_dirty");
+
+        await click('.o_shift_brush[data-template-id="10"]');
+        await animationFrame();
+        await click(ANN_15);
+        await animationFrame();
+        expect(`${ANN_15} .o_shift_code`).toHaveText("M");
+        expect(ANN_15).not.toHaveClass("o_shift_dirty");
+        expect(".o_shift_save").not.toBeEnabled();
+    });
+
+    test("save sends all changes in one call and reloads", async () => {
+        await openGrid();
+
+        await click('.o_shift_brush[data-template-id="11"]');
+        await animationFrame();
+        await click(BOB_12);
+        await animationFrame();
+        await click(".o_shift_brush_clear");
+        await animationFrame();
+        await click(ANN_15);
+        await animationFrame();
+
+        await click(".o_shift_save");
+        await animationFrame();
+
+        expect(saveRequests).toEqual([
+            [
+                { employee_id: 2, date: "2026-10-12", template_id: 11 },
+                { employee_id: 1, date: "2026-10-15", template_id: false },
+            ],
+        ]);
+        expect(loadRequests).toHaveLength(2);
+        expect(".o_shift_dirty").toHaveCount(0);
+        expect(".o_shift_save").not.toBeEnabled();
+    });
+
+    test("discard drops the pending changes", async () => {
+        await openGrid();
+
+        await click('.o_shift_brush[data-template-id="11"]');
+        await animationFrame();
+        await click(BOB_12);
+        await animationFrame();
+        await click(".o_shift_discard");
+        await animationFrame();
+
+        expect(`${BOB_12} .o_shift_chip`).toHaveCount(0);
+        expect(".o_shift_dirty").toHaveCount(0);
+        expect(saveRequests).toEqual([]);
+    });
+
+    test("changing month with unsaved changes asks for confirmation", async () => {
+        await openGrid();
+
+        await click('.o_shift_brush[data-template-id="11"]');
+        await animationFrame();
+        await click(BOB_12);
+        await animationFrame();
+
+        // Stay: month and change are kept
+        await click(".o_shift_next");
+        await animationFrame();
+        expect(".modal").toHaveCount(1);
+        await click(".modal-footer .btn-secondary");
+        await animationFrame();
+        expect(".o_shift_month").toHaveText(/October 2026/i);
+        expect(BOB_12).toHaveClass("o_shift_dirty");
+
+        // Discard: the next month is loaded without the change
+        await click(".o_shift_next");
+        await animationFrame();
+        await click(".modal-footer .btn-primary");
+        await animationFrame();
+        expect(".o_shift_month").toHaveText(/November 2026/i);
+        expect(".o_shift_dirty").toHaveCount(0);
+        expect(saveRequests).toEqual([]);
+    });
 });

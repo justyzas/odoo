@@ -45,6 +45,7 @@ Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuvi�
 | Darbo valandos / Peržiūra | Working Hours / Viewer |
 | Darbo valandos / Planuotojas | Working Hours / Planner |
 | Išsaugoti / Atšaukti | Save / Discard |
+| Likti (įspėjimo lange) | Stay |
 | Išvalyti | Clear |
 | Kitas laikas | Custom time |
 | Šiandien | Today |
@@ -62,7 +63,7 @@ Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuvi�
 | 1 | Karkasas, teisės, šablonai | FR-1 (dalinai), FR-3, FR-5 | ✅ Baigtas |
 | 2 | Pamainos modelis | FR-4, FR-5 | ✅ Baigtas |
 | 3 | Lentelė: peržiūra ir naršymas | FR-1, FR-2.1, FR-2.2, FR-2.5 [M] | ✅ Baigtas |
-| 4 | Lentelė: redagavimas ir išsaugojimas | FR-2.3 A–B, FR-2.4, FR-5 | ⬜ Neprasidėjęs |
+| 4 | Lentelė: redagavimas ir išsaugojimas | FR-2.3 A–B, FR-2.4, FR-5 | 🧪 Laukia testavimo |
 | 5 | Rankinis laikas, valandų suma, filtrai | FR-2.3 C, FR-2.5 [S] | ⬜ Neprasidėjęs |
 | 6 | DK įspėjimai | FR-2.6 | ⬜ Neprasidėjęs |
 | 7 | Greitinimo funkcijos | FR-2.3 D–E, FR-2.5 [C], FR-2.7 | ⬜ Neprasidėjęs |
@@ -219,18 +220,27 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 - Peržiūros grupei teptukų juosta ir redagavimas paslėpti. Serveris taip pat atmeta jų pakeitimus.
 - Hoot testai: teptukas, iššokantis langas, išsaugojimas, atšaukimas. Python testas: išsaugojimo metodas ir teisės.
 
+**Išdėstymas:** teptukų juosta yra valdymo skydelio viduryje, mygtukai „Save“ / „Discard“ — kairėje (kaip Odoo formose), mėnesio naršymas — dešinėje. Taip visi valdikliai lieka matomi slenkant lentelę.
+
 **Testavimas:**
-- [ ] 4.1. Pasirinkus teptuką „R“ ir paspaudus langelį, langelyje atsiranda „R“ (2 paspaudimai, NFR-2).
-- [ ] 4.2. Toliau spaudžiant kitus langelius, kiekvienas užpildomas 1 paspaudimu.
-- [ ] 4.3. „Išvalyti“ teptukas ištrina pamainą langelyje.
-- [ ] 4.4. Be teptuko paspaudus langelį, atsidaro šablonų langas. Pasirinkus šabloną, jis priskiriamas.
-- [ ] 4.5. Pakeisti langeliai pažymėti kaip neišsaugoti.
-- [ ] 4.6. „Išsaugoti“: žymės dingsta, perkrovus puslapį pakeitimai išlieka.
-- [ ] 4.7. „Atšaukti“: pakeitimai atmetami.
-- [ ] 4.8. Su neišsaugotais pakeitimais keičiant mėnesį ar išeinant iš puslapio, rodomas įspėjimas.
-- [ ] 4.9. Priskyrus pamainą langeliui, kuriame jau yra kita, ji pakeičiama (ne dubliuojama).
-- [ ] 4.10. Peržiūros grupės naudotojas mato lentelę, bet teptukų juostos nėra ir paspaudimas nieko nekeičia.
-- [ ] 4.11. Hoot ir Python testai praeina.
+- [ ] 4.1. Planner naudotojui viršuje matoma teptukų juosta: aktyvūs šablonai (kodas, šablono spalva) eiliškumo tvarka ir „Clear“. Archyvuoti šablonai nerodomi.
+- [ ] 4.2. Paspaudus teptuką „R“, jis pažymimas rėmeliu. Paspaudus tuščią langelį, jame atsiranda „R“ (2 paspaudimai, NFR-2).
+- [ ] 4.3. Toliau spaudžiant kitus langelius, kiekvienas užpildomas 1 paspaudimu. Teptukas lieka pasirinktas.
+- [ ] 4.4. Paspaudus aktyvų teptuką dar kartą, jis atžymimas.
+- [ ] 4.5. Be teptuko paspaudus langelį, atsidaro šablonų sąrašas (kodas, pavadinimas, laikas) ir „Clear“. Pasirinkus šabloną, jis priskiriamas ir sąrašas užsidaro. Paspaudus šalia arba Esc, sąrašas užsidaro be pakeitimų.
+- [ ] 4.6. Pakeisti langeliai pažymėti oranžiniu taškeliu kampe. Mygtukas rodo pakeitimų skaičių, pvz. „Save (3)“.
+- [ ] 4.7. „Clear“ teptukas pašalina pamainą iš langelio.
+- [ ] 4.8. Grąžinus langeliui pradinę reikšmę (pvz. „Clear“, o tada vėl tas pats šablonas), taškelis dingsta ir pakeitimas nebeskaičiuojamas.
+- [ ] 4.9. Langelyje, kuriame jau yra pamaina, pritaikius kitą šabloną, ji pakeičiama (ne dubliuojama).
+- [ ] 4.10. Pamainai su pakeistu laiku („R*“) pritaikius tą patį teptuką „R“ ir išsaugojus, laikas grąžinamas į šablono laiką, žvaigždutė dingsta.
+- [ ] 4.11. „Save“: taškeliai dingsta, perkrovus puslapį pakeitimai išlieka.
+- [ ] 4.12. „Discard“: visi neišsaugoti pakeitimai atmetami.
+- [ ] 4.13. Su neišsaugotais pakeitimais keičiant mėnesį rodomas langas: „Stay“ palieka mėnesį ir pakeitimus, „Discard“ juos atmeta ir perjungia mėnesį.
+- [ ] 4.14. Su neišsaugotais pakeitimais einant į kitą meniu, rodomas tas pats langas.
+- [ ] 4.15. Su neišsaugotais pakeitimais uždarant / perkraunant naršyklės skirtuką, naršyklė įspėja.
+- [ ] 4.16. Viewer naudotojas mato lentelę, bet teptukų juostos ir „Save“ / „Discard“ nėra. Paspaudus langelį, jis tik pažymimas.
+- [ ] 4.17. „Shifts (list)“ meniu nebematomas įprastame režime, bet matomas developer režime (`?debug=1`).
+- [ ] 4.18. Hoot ir Python testai praeina (nebūtina).
 
 **Commit message:** `hr_shift_planning: brush and popover editing with batch save`
 
@@ -363,3 +373,5 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 | 2026-10-07 | Žingsnis 2 ištestuotas rankiniu būdu, visi punktai praėjo. Testavimo punktai sunumeruoti (`<žingsnis>.<nr>.`) |
 | 2026-10-07 | Žingsnis 3 įgyvendintas. Papildomai jau dabar rodomas rankinio laiko žymėjimas („R*“, pilkas „06-12“), kuris planuotas žingsnyje 5 (duomenys jau yra). „Shifts (list)“ paliktas iki žingsnio 4, kad būtų galima kurti testines pamainas |
 | 2026-10-07 | Žingsnis 3 ištestuotas, visi punktai praėjo |
+| 2026-10-07 | Žingsnis 4 įgyvendintas. Mėnesio naršymas perkeltas į dešinę valdymo skydelio pusę, o jo vietą užėmė teptukų juosta. „Shifts (list)“ paliktas tik developer režimui (problemų tyrimui, eksportui). Pritaikius tą patį šabloną pamainai su pakeistu laiku, laikas grąžinamas į šablono |
+| 2026-10-07 | Žingsnio 4 pataisa: išsaugant naują pamainą iš lentelės buvo klaida „Missing required value for the field 'Start'“. Apskaičiuojami pamainos laukai pažymėti `precompute=True`, kad būtų apskaičiuojami prieš įrašant į DB |

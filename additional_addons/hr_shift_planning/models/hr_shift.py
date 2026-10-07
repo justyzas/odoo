@@ -41,6 +41,7 @@ class HrShift(models.Model):
         required=True,
         compute="_compute_from_template",
         store=True,
+        precompute=True,
         readonly=False,
     )
     end_datetime = fields.Datetime(
@@ -48,30 +49,35 @@ class HrShift(models.Model):
         required=True,
         compute="_compute_from_template",
         store=True,
+        precompute=True,
         readonly=False,
     )
     break_minutes = fields.Integer(
         string="Break (minutes)",
         compute="_compute_from_template",
         store=True,
+        precompute=True,
         readonly=False,
     )
     duration = fields.Float(
         string="Duration (hours)",
         compute="_compute_duration",
         store=True,
+        precompute=True,
         help="Working hours of the shift, excluding the break.",
     )
     is_custom = fields.Boolean(
         string="Custom Time",
         compute="_compute_is_custom",
         store=True,
+        precompute=True,
         help="The shift time differs from its template.",
     )
     company_id = fields.Many2one(
         "res.company",
         compute="_compute_company_id",
         store=True,
+        precompute=True,
         index=True,
     )
 
@@ -202,7 +208,48 @@ class HrShift(models.Model):
             ],
             "templates": templates,
             "holidays": self._get_public_holidays(date_from, date_to),
+            "can_edit": self.env.user.has_group("hr_shift_planning.group_shift_planner"),
         }
+
+    @api.model
+    def save_planning_changes(self, changes):
+        """Apply the changes made in the planning grid, in one call.
+
+        :param changes: list of ``{"employee_id": int, "date": "YYYY-MM-DD",
+            "template_id": int | False}``; ``template_id: False`` removes the
+            shift of that employee on that day.
+        """
+        if not changes:
+            return True
+        keys = {(c["employee_id"], fields.Date.to_date(c["date"])) for c in changes}
+        existing = {
+            (shift.employee_id.id, shift.date): shift
+            for shift in self.search([
+                ("employee_id", "in", list({k[0] for k in keys})),
+                ("date", "in", list({k[1] for k in keys})),
+            ])
+        }
+        to_delete = self.browse()
+        to_create = []
+        for change in changes:
+            key = (change["employee_id"], fields.Date.to_date(change["date"]))
+            shift = existing.get(key)
+            template_id = change["template_id"]
+            if not template_id:
+                to_delete |= shift or self.browse()
+            elif shift:
+                shift.template_id = template_id
+                # Also resets a custom time when the same template is applied again
+                shift.write(shift._get_template_values())
+            else:
+                to_create.append({
+                    "employee_id": key[0],
+                    "date": key[1],
+                    "template_id": template_id,
+                })
+        to_delete.unlink()
+        self.create(to_create)
+        return True
 
     @api.model
     def _get_public_holidays(self, date_from, date_to):

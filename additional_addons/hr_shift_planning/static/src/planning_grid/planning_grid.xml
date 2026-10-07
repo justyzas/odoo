@@ -4,8 +4,41 @@
     <t t-name="hr_shift_planning.ShiftPlanningGrid">
         <div class="o_action o_shift_planning">
             <Layout display="{ controlPanel: {} }">
+                <t t-set-slot="control-panel-create-button">
+                    <div t-if="state.grid.canEdit" class="d-flex gap-1">
+                        <button class="btn btn-primary o_shift_save" t-att-disabled="!hasChanges or state.saving" t-on-click="save">
+                            Save<t t-if="hasChanges"> (<t t-esc="changeCount"/>)</t>
+                        </button>
+                        <button class="btn btn-secondary o_shift_discard" t-att-disabled="!hasChanges or state.saving" t-on-click="discard">
+                            Discard
+                        </button>
+                    </div>
+                </t>
                 <t t-set-slot="layout-actions">
+                    <div t-if="state.grid.canEdit" class="o_shift_toolbar d-flex flex-wrap align-items-center gap-1">
+                        <button t-foreach="state.grid.palette" t-as="template" t-key="template.id"
+                                class="btn o_shift_brush"
+                                t-att-class="{ o_shift_brush_active: isBrushActive(template.id) }"
+                                t-att-style="template.style"
+                                t-att-data-template-id="template.id"
+                                t-att-title="template.name + ' ' + template.timeLabel"
+                                t-on-click="() => this.selectBrush(template.id)">
+                            <t t-esc="template.code"/>
+                        </button>
+                        <button class="btn btn-light o_shift_brush o_shift_brush_clear"
+                                t-att-class="{ o_shift_brush_active: isBrushActive(false) }"
+                                title="Clear"
+                                t-on-click="() => this.selectBrush(false)">
+                            <i class="fa fa-eraser"/> Clear
+                        </button>
+                        <span t-if="!state.grid.palette.length" class="text-muted small ms-1">
+                            No shift templates yet: create them in Working Hours → Templates.
+                        </span>
+                    </div>
+                </t>
+                <t t-set-slot="control-panel-navigation-additional">
                     <div class="d-flex align-items-center gap-1">
+                        <span class="o_shift_month me-2 fw-bold text-capitalize text-nowrap" t-esc="monthLabel"/>
                         <button class="btn btn-secondary o_shift_prev" title="Previous month" t-on-click="() => this.changeMonth(-1)">
                             <i class="fa fa-chevron-left"/>
                         </button>
@@ -13,7 +46,6 @@
                         <button class="btn btn-secondary o_shift_next" title="Next month" t-on-click="() => this.changeMonth(1)">
                             <i class="fa fa-chevron-right"/>
                         </button>
-                        <span class="o_shift_month ms-2 fw-bold text-capitalize" t-esc="monthLabel"/>
                     </div>
                 </t>
 
@@ -45,13 +77,13 @@
                                 <div t-if="employee.info" class="o_shift_employee_info text-truncate" t-esc="employee.info"/>
                             </th>
                             <t t-foreach="state.grid.days" t-as="day" t-key="day.key">
-                                <t t-set="shift" t-value="getShift(employee, day)"/>
-                                <td class="o_shift_cell" t-att-class="getCellClass(employee, day)"
+                                <t t-set="cell" t-value="getCell(employee, day)"/>
+                                <td class="o_shift_cell" t-att-class="getCellClass(employee, day, cell)"
                                     t-att-data-day="day.key" t-att-data-employee-id="employee.id"
-                                    t-att-title="shift and shift.title">
-                                    <div t-if="shift" class="o_shift_chip" t-att-style="shift.style">
-                                        <span class="o_shift_code" t-esc="shift.label"/>
-                                        <span class="o_shift_hours" t-esc="shift.hours"/>
+                                    t-att-title="cell.shift and cell.shift.title">
+                                    <div t-if="cell.shift" class="o_shift_chip" t-att-style="cell.shift.style">
+                                        <span class="o_shift_code" t-esc="cell.shift.label"/>
+                                        <span class="o_shift_hours" t-esc="cell.shift.hours"/>
                                     </div>
                                 </td>
                             </t>

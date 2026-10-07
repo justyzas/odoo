@@ -1,7 +1,37 @@
+// Template picker popover (rendered in the overlay, outside the grid)
+.o_shift_template_picker {
+    min-width: 220px;
+    .o_shift_swatch {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 32px;
+        height: 24px;
+        padding: 0 4px;
+        border-radius: 4px;
+        font-weight: bold;
+    }
+    .o_shift_swatch_clear {
+        background-color: var(--bs-tertiary-bg);
+    }
+}
+
 .o_shift_planning {
     $o-shift-cell-height: 60px;
     $o-shift-cell-width: 48px;
     $o-shift-employee-width: 200px;
+
+    // Brush toolbar (control panel)
+    .o_shift_brush {
+        min-width: 44px;
+        font-weight: bold;
+        border: 2px solid transparent;
+        &.o_shift_brush_active {
+            border-color: var(--bs-primary);
+            box-shadow: 0 0 0 2px var(--bs-primary-bg-subtle);
+            transform: translateY(-1px);
+        }
+    }
 
     .o_shift_grid {
         border-collapse: separate;
@@ -61,10 +91,24 @@
         }
 
         .o_shift_cell {
+            position: relative;
             height: $o-shift-cell-height;
             min-width: $o-shift-cell-width;
             padding: 3px;
             cursor: pointer;
+        }
+
+        // Unsaved change: dot in the top-right corner
+        .o_shift_dirty::after {
+            content: "";
+            position: absolute;
+            top: 3px;
+            right: 3px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--bs-warning);
+            border: 1px solid var(--bs-body-bg);
         }
 
         .o_shift_chip {

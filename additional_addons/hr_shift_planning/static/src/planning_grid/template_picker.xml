@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="hr_shift_planning.ShiftTemplatePicker">
+        <div class="o_shift_template_picker list-group list-group-flush">
+            <button t-foreach="props.templates" t-as="template" t-key="template.id"
+                    class="list-group-item list-group-item-action d-flex align-items-center gap-2 o_shift_picker_template"
+                    t-att-data-template-id="template.id"
+                    t-on-click="() => this.select(template.id)">
+                <span class="o_shift_swatch" t-att-style="template.style" t-esc="template.code"/>
+                <span class="flex-grow-1" t-esc="template.name"/>
+                <span class="text-muted small" t-esc="template.timeLabel"/>
+            </button>
+            <button class="list-group-item list-group-item-action d-flex align-items-center gap-2 o_shift_picker_clear"
+                    t-on-click="() => this.select(false)">
+                <span class="o_shift_swatch o_shift_swatch_clear"><i class="fa fa-eraser"/></span>
+                <span>Clear</span>
+            </button>
+        </div>
+    </t>
+
+</templates>

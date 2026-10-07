@@ -157,3 +157,37 @@ class TestHrShift(TransactionCase):
     def test_planning_data_plain_user_no_access(self):
         with self.assertRaises(AccessError):
             self.Shift.with_user(self.user).get_planning_data("2026-10-01", "2026-10-31")
+
+    def test_planning_data_can_edit(self):
+        Shift = self.Shift
+        self.assertTrue(Shift.with_user(self.planner).get_planning_data("2026-10-01", "2026-10-31")["can_edit"])
+        self.assertFalse(Shift.with_user(self.viewer).get_planning_data("2026-10-01", "2026-10-31")["can_edit"])
+
+    def test_save_planning_changes(self):
+        replaced = self._create()  # 10-15: morning -> night
+        removed = self._create(day=date(2026, 10, 16))  # 10-16: removed
+        custom = self._create(day=date(2026, 10, 17))  # 10-17: custom -> template time again
+        custom.end_datetime = datetime(2026, 10, 17, 9, 0)
+        self.assertTrue(custom.is_custom)
+
+        self.Shift.with_user(self.planner).save_planning_changes([
+            {"employee_id": self.employee.id, "date": "2026-10-15", "template_id": self.night.id},
+            {"employee_id": self.employee.id, "date": "2026-10-16", "template_id": False},
+            {"employee_id": self.employee.id, "date": "2026-10-17", "template_id": self.morning.id},
+            {"employee_id": self.employee.id, "date": "2026-10-18", "template_id": self.morning.id},
+            {"employee_id": self.employee.id, "date": "2026-10-19", "template_id": False},  # nothing there
+        ])
+
+        self.assertEqual(replaced.template_id, self.night)
+        self.assertEqual(replaced.start_datetime, datetime(2026, 10, 15, 19, 0))
+        self.assertFalse(removed.exists())
+        self.assertEqual(custom.end_datetime, datetime(2026, 10, 17, 11, 0))
+        self.assertFalse(custom.is_custom)
+        created = self.Shift.search([("employee_id", "=", self.employee.id), ("date", "=", "2026-10-18")])
+        self.assertEqual(created.template_id, self.morning)
+
+    def test_save_planning_changes_viewer_denied(self):
+        with self.assertRaises(AccessError):
+            self.Shift.with_user(self.viewer).save_planning_changes([
+                {"employee_id": self.employee.id, "date": "2026-10-15", "template_id": self.morning.id},
+            ])
