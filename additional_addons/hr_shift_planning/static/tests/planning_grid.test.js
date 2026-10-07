@@ -1,7 +1,7 @@
 import { defineMailModels } from "@mail/../tests/mail_test_helpers";
 import { beforeEach, describe, expect, test } from "@odoo/hoot";
-import { click, queryAll } from "@odoo/hoot-dom";
-import { animationFrame, mockDate } from "@odoo/hoot-mock";
+import { click, edit, queryAll, select } from "@odoo/hoot-dom";
+import { animationFrame, mockDate, mockTimeZone } from "@odoo/hoot-mock";
 import { defineActions, getService, mountWithCleanup, onRpc } from "@web/../tests/web_test_helpers";
 import { WebClient } from "@web/webclient/webclient";
 
@@ -87,6 +87,7 @@ async function openGrid(options) {
 
 beforeEach(() => {
     mockDate("2026-10-07 10:00:00");
+    mockTimeZone(+3); // Vilnius summer time: the 03:00 UTC shift starts at 06:00
     loadRequests = [];
     saveRequests = [];
 });
@@ -153,6 +154,49 @@ describe("display", () => {
             ["2026-09-01", "2026-09-30"],
             ["2026-10-01", "2026-10-31"],
         ]);
+    });
+});
+
+describe("totals and filters", () => {
+    test("monthly total per employee follows unsaved changes", async () => {
+        await openGrid();
+
+        const annTotal = '.o_shift_cell[data-employee-id="1"] ~ .o_shift_total';
+        const bobTotal = '.o_shift_cell[data-employee-id="2"] ~ .o_shift_total';
+        expect(annTotal).toHaveText("7.5h");
+        expect(bobTotal).toHaveText("0h");
+
+        await click('.o_shift_brush[data-template-id="11"]');
+        await animationFrame();
+        await click(BOB_12);
+        await animationFrame();
+        await click(BOB_13);
+        await animationFrame();
+        expect(bobTotal).toHaveText("15h");
+    });
+
+    test("search by name ignores case and accents", async () => {
+        await openGrid();
+
+        await click(".o_shift_search");
+        await edit("ÁN");
+        await animationFrame();
+        expect(".o_shift_employee_name").toHaveCount(1);
+        expect(".o_shift_employee_name").toHaveText("Ann");
+
+        await edit("");
+        await animationFrame();
+        expect(".o_shift_employee_name").toHaveCount(2);
+    });
+
+    test("department filter", async () => {
+        await openGrid();
+
+        expect(".o_shift_department option").toHaveCount(3); // All + 2 departments
+        await select("Warehouse", { target: ".o_shift_department" });
+        await animationFrame();
+        expect(".o_shift_employee_name").toHaveCount(1);
+        expect(".o_shift_employee_name").toHaveText("Bob");
     });
 });
 
@@ -274,6 +318,127 @@ describe("editing", () => {
         expect(`${BOB_12} .o_shift_chip`).toHaveCount(0);
         expect(".o_shift_dirty").toHaveCount(0);
         expect(saveRequests).toEqual([]);
+    });
+
+    test("custom time without template", async () => {
+        await openGrid();
+
+        await click(BOB_12);
+        await animationFrame();
+        await click(".o_shift_picker_custom");
+        await animationFrame();
+        expect(".o_shift_custom_form").toHaveCount(1);
+
+        // short 24-hour forms are accepted: "6" = 06:00, "1200" = 12:00
+        await click(".o_shift_custom_from");
+        await edit("6");
+        await click(".o_shift_custom_to");
+        await edit("1200");
+        await animationFrame();
+        expect(".o_shift_custom_from").toHaveValue("06:00"); // normalized on blur
+        await click(".o_shift_custom_apply");
+        await animationFrame();
+
+        expect(".o_shift_template_picker").toHaveCount(0);
+        expect(`${BOB_12} .o_shift_code`).toHaveText("06-12");
+        expect(`${BOB_12} .o_shift_hours`).toHaveText("6h");
+        expect(BOB_12).toHaveClass("o_shift_dirty");
+
+        await click(".o_shift_save");
+        await animationFrame();
+        expect(saveRequests).toEqual([
+            [
+                {
+                    employee_id: 2,
+                    date: "2026-10-12",
+                    template_id: false,
+                    custom: { hour_from: 6, hour_to: 12, break_minutes: 0 },
+                },
+            ],
+        ]);
+    });
+
+    test("custom time is pre-filled from the cell and keeps the template", async () => {
+        await openGrid();
+
+        await click(ANN_15);
+        await animationFrame();
+        await click(".o_shift_picker_custom");
+        await animationFrame();
+        expect(".o_shift_custom_template").toHaveValue("10");
+        expect(".o_shift_custom_from").toHaveValue("06:00");
+        expect(".o_shift_custom_to").toHaveValue("14:00");
+        expect(".o_shift_custom_break").toHaveValue(30);
+
+        await click(".o_shift_custom_to");
+        await edit("12:00");
+        await click(".o_shift_custom_apply");
+        await animationFrame();
+
+        expect(`${ANN_15} .o_shift_code`).toHaveText("M*");
+        expect(`${ANN_15} .o_shift_hours`).toHaveText("5.5h");
+
+        await click(".o_shift_save");
+        await animationFrame();
+        expect(saveRequests).toEqual([
+            [
+                {
+                    employee_id: 1,
+                    date: "2026-10-15",
+                    template_id: 10,
+                    custom: { hour_from: 6, hour_to: 12, break_minutes: 30 },
+                },
+            ],
+        ]);
+    });
+
+    test("custom time: picking a template fills its time", async () => {
+        await openGrid();
+
+        await click(BOB_12);
+        await animationFrame();
+        await click(".o_shift_picker_custom");
+        await animationFrame();
+        await select("11", { target: ".o_shift_custom_template" });
+        await animationFrame();
+        expect(".o_shift_custom_from").toHaveValue("22:00");
+        expect(".o_shift_custom_to").toHaveValue("06:00");
+    });
+
+    test("custom time: an invalid time is refused", async () => {
+        await openGrid();
+
+        await click(BOB_12);
+        await animationFrame();
+        await click(".o_shift_picker_custom");
+        await animationFrame();
+        await click(".o_shift_custom_from");
+        await edit("25:00");
+        await click(".o_shift_custom_apply");
+        await animationFrame();
+
+        expect(".o_shift_custom_error").toHaveCount(1);
+        expect(`${BOB_12} .o_shift_chip`).toHaveCount(0);
+    });
+
+    test("custom time: a break longer than the shift is refused", async () => {
+        await openGrid();
+
+        await click(BOB_12);
+        await animationFrame();
+        await click(".o_shift_picker_custom");
+        await animationFrame();
+        await click(".o_shift_custom_from");
+        await edit("06:00");
+        await click(".o_shift_custom_to");
+        await edit("07:00");
+        await click(".o_shift_custom_break");
+        await edit("90");
+        await click(".o_shift_custom_apply");
+        await animationFrame();
+
+        expect(".o_shift_custom_error").toHaveCount(1);
+        expect(`${BOB_12} .o_shift_chip`).toHaveCount(0);
     });
 
     test("changing month with unsaved changes asks for confirmation", async () => {

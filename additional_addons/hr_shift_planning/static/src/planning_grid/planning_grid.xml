@@ -60,7 +60,18 @@
                        t-on-mouseleave="onGridMouseLeave">
                     <thead>
                         <tr>
-                            <th class="o_shift_corner">Employee</th>
+                            <th class="o_shift_corner">
+                                <input type="search" class="form-control form-control-sm o_shift_search mb-1"
+                                       placeholder="Search employee..."
+                                       t-att-value="state.search" t-on-input="onSearchInput"/>
+                                <select t-if="state.grid.departments.length" class="form-select form-select-sm o_shift_department"
+                                        t-on-change="onDepartmentChange">
+                                    <option value="" t-att-selected="!state.department">All departments</option>
+                                    <option t-foreach="state.grid.departments" t-as="department" t-key="department"
+                                            t-att-value="department" t-att-selected="department === state.department"
+                                            t-esc="department"/>
+                                </select>
+                            </th>
                             <t t-foreach="state.grid.days" t-as="day" t-key="day.key">
                                 <th class="o_shift_day_header" t-att-class="getDayClass(day)"
                                     t-att-data-day="day.key" t-att-title="day.holiday">
@@ -68,10 +79,11 @@
                                     <div class="o_shift_weekday" t-esc="day.weekday"/>
                                 </th>
                             </t>
+                            <th class="o_shift_total_header" title="Planned hours this month">Σ h</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr t-foreach="state.grid.employees" t-as="employee" t-key="employee.id">
+                        <tr t-foreach="visibleEmployees" t-as="employee" t-key="employee.id">
                             <th class="o_shift_employee" t-att-class="{ o_shift_selected_employee: isEmployeeSelected(employee) }">
                                 <div class="o_shift_employee_name text-truncate" t-esc="employee.name"/>
                                 <div t-if="employee.info" class="o_shift_employee_info text-truncate" t-esc="employee.info"/>
@@ -87,6 +99,7 @@
                                     </div>
                                 </td>
                             </t>
+                            <td class="o_shift_total" t-esc="getEmployeeTotal(employee)"/>
                         </tr>
                     </tbody>
                 </table>

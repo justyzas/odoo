@@ -48,6 +48,8 @@ Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuvi�
 | Likti (įspėjimo lange) | Stay |
 | Išvalyti | Clear |
 | Kitas laikas | Custom time |
+| Pritaikyti | Apply |
+| Paieška / Visi skyriai | Search employee... / All departments |
 | Šiandien | Today |
 | Archyvuoti (filtras) | Archived |
 | Baigiasi kitą dieną | Ends Next Day |
@@ -63,8 +65,8 @@ Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuvi�
 | 1 | Karkasas, teisės, šablonai | FR-1 (dalinai), FR-3, FR-5 | ✅ Baigtas |
 | 2 | Pamainos modelis | FR-4, FR-5 | ✅ Baigtas |
 | 3 | Lentelė: peržiūra ir naršymas | FR-1, FR-2.1, FR-2.2, FR-2.5 [M] | ✅ Baigtas |
-| 4 | Lentelė: redagavimas ir išsaugojimas | FR-2.3 A–B, FR-2.4, FR-5 | 🧪 Laukia testavimo |
-| 5 | Rankinis laikas, valandų suma, filtrai | FR-2.3 C, FR-2.5 [S] | ⬜ Neprasidėjęs |
+| 4 | Lentelė: redagavimas ir išsaugojimas | FR-2.3 A–B, FR-2.4, FR-5 | ✅ Baigtas |
+| 5 | Rankinis laikas, valandų suma, filtrai | FR-2.3 C, FR-2.5 [S] | ✅ Baigtas |
 | 6 | DK įspėjimai | FR-2.6 | ⬜ Neprasidėjęs |
 | 7 | Greitinimo funkcijos | FR-2.3 D–E, FR-2.5 [C], FR-2.7 | ⬜ Neprasidėjęs |
 | 8 | Vertimai ir galutinis patikrinimas | NFR-1–NFR-9 | ⬜ Neprasidėjęs |
@@ -260,16 +262,24 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 - Filtras pagal skyrių ir paieška pagal vardą.
 - Hoot testai.
 
+**Išdėstymas:** paieška ir skyriaus filtras yra lentelės kampe virš darbuotojų stulpelio, todėl lieka matomi slenkant. Stulpelis „Σ h“ prilipęs prie dešinio krašto.
+
 **Testavimas:**
-- [ ] 5.1. Langelis → „Kitas laikas“: laukai atsiranda per 2 paspaudimus.
-- [ ] 5.2. Šablonas „R“ su laiku 06:00–12:00 rodomas kaip „R\*“, užvedus pelę matyti 06:00–12:00.
-- [ ] 5.3. Laikas be šablono rodomas pilkame langelyje kaip „06–12“.
-- [ ] 5.4. Teptukas „R“ ant „R\*“ langelio grąžina 06:00–14:00, žvaigždutė dingsta.
-- [ ] 5.5. „Σ val.“ teisingai sumuoja mėnesio valandas, atsižvelgiant į pertraukas ir rankinius laikus.
-- [ ] 5.6. Suma atsinaujina iš karto, dar neišsaugojus.
-- [ ] 5.7. Filtras pagal skyrių rodo tik to skyriaus darbuotojus.
-- [ ] 5.8. Paieška pagal vardo dalį veikia.
-- [ ] 5.9. Hoot testai praeina.
+- [ ] 5.1. Be teptuko paspaudus langelį, sąraše yra punktas „Custom time“. Jį paspaudus, atsiranda forma: Template, Start, End, Break (min). Iš viso 2 paspaudimai.
+- [ ] 5.2. Forma užpildyta pagal langelio dabartinę reikšmę (pvz. „R“ langelyje: R, 06:00, 14:00, 30). Tuščiame langelyje: be šablono, 08:00–16:00, 0.
+- [ ] 5.3. Formoje pasirinkus šabloną, laikai ir pertrauka užsipildo pagal šabloną.
+- [ ] 5.4. Šablonas „R“ su laiku 06:00–12:00 → langelyje „R*“, valandos be pertraukos (5.5h). Užvedus pelę rodoma 06:00 - 12:00.
+- [ ] 5.5. Laikas be šablono (Template: None) rodomas pilkame langelyje kaip „06-12“.
+- [ ] 5.6. Naktinis rankinis laikas (pvz. 20:00–02:30) priimamas, valandos skaičiuojamos per vidurnaktį (6.5h).
+- [ ] 5.7. Pertrauka, ilgesnė už pamainą, neleidžiama: formoje rodoma klaida, langelis nesikeičia. Enter = Apply, Cancel / Esc uždaro be pakeitimų.
+- [ ] 5.8. Start / End laukai visada 24 val. formato (be AM/PM). Priimami trumpi įvedimai: „6“ → 06:00, „630“ → 06:30, „6.30“ → 06:30, „1400“ → 14:00, „24:00“ → 00:00. Išėjus iš lauko, reikšmė perrašoma į HH:MM. Neteisingas laikas („25:00“) neleidžiamas, rodoma klaida.
+- [ ] 5.9. Išsaugojus ir perkrovus puslapį, rankiniai laikai išlieka. „Shifts (list)“ (debug režime) rodo teisingus Start / End ir „Custom Time“.
+- [ ] 5.10. Teptukas „R“ ant „R*“ langelio grąžina šablono laiką, žvaigždutė dingsta.
+- [ ] 5.11. Stulpelis „Σ h“ dešinėje rodo kiekvieno darbuotojo mėnesio valandas (be pertraukų, su rankiniais laikais).
+- [ ] 5.12. Suma atsinaujina iš karto keičiant langelius, dar neišsaugojus.
+- [ ] 5.13. Paieška pagal vardo dalį veikia nepaisant didžiųjų raidžių ir lietuviškų raidžių („ciurl“ randa „Čiurlionis“).
+- [ ] 5.14. Skyriaus filtras rodo tik to skyriaus darbuotojus. „All departments“ grąžina visus.
+- [ ] 5.15. Hoot ir Python testai praeina (nebūtina).
 
 **Commit message:** `hr_shift_planning: custom shift times, monthly totals and filters`
 
@@ -375,3 +385,8 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 | 2026-10-07 | Žingsnis 3 ištestuotas, visi punktai praėjo |
 | 2026-10-07 | Žingsnis 4 įgyvendintas. Mėnesio naršymas perkeltas į dešinę valdymo skydelio pusę, o jo vietą užėmė teptukų juosta. „Shifts (list)“ paliktas tik developer režimui (problemų tyrimui, eksportui). Pritaikius tą patį šabloną pamainai su pakeistu laiku, laikas grąžinamas į šablono |
 | 2026-10-07 | Žingsnio 4 pataisa: išsaugant naują pamainą iš lentelės buvo klaida „Missing required value for the field 'Start'“. Apskaičiuojami pamainos laukai pažymėti `precompute=True`, kad būtų apskaičiuojami prieš įrašant į DB |
+| 2026-10-07 | Žingsnis 4 ištestuotas, visi punktai praėjo |
+| 2026-10-07 | Žingsnis 5 įgyvendintas. Žvaigždutė („R*“) lentelėje dabar nustatoma lyginant su dabartiniu šablono laiku: jei šablonas pakeičiamas po pamainos suplanavimo, senos pamainos rodomos su „*“. Rankinis laikas įvedamas ir rodomas naršyklės laiko juosta, o serveryje interpretuojamas darbuotojo laiko juosta (turi sutapti) |
+| 2026-10-07 | Žingsnio 5 pataisa: atidarant „Custom time“ formą buvo klaida „ctx.String is not a function“ (Owl šablone nepasiekiamos globalios JS funkcijos) |
+| 2026-10-07 | Žingsnio 5 pakeitimas (naudotojo prašymu): „Custom time“ Start / End laukai pakeisti iš naršyklės `type="time"` (formatas priklauso nuo OS / naršyklės, rodė AM/PM) į teksto laukus su 24 val. formatu ir trumpais įvedimais |
+| 2026-10-07 | Žingsnis 5 ištestuotas, visi punktai praėjo |

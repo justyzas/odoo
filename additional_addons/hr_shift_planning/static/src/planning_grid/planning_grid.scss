@@ -14,6 +14,14 @@
     .o_shift_swatch_clear {
         background-color: var(--bs-tertiary-bg);
     }
+    .o_shift_custom_time {
+        width: 72px;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+    }
+    .o_shift_custom_break {
+        width: 80px;
+    }
 }
 
 .o_shift_planning {
@@ -69,7 +77,25 @@
         }
         .o_shift_corner {
             z-index: 3;
+            vertical-align: bottom;
+            user-select: auto;
+        }
+
+        // Sticky monthly total column
+        .o_shift_total_header, .o_shift_total {
+            position: sticky;
+            right: 0;
+            z-index: 1;
+            width: 64px;
+            min-width: 64px;
+            text-align: right;
+            padding: 4px 8px;
             font-weight: bold;
+            border-left: 1px solid var(--bs-border-color);
+            white-space: nowrap;
+        }
+        .o_shift_total_header {
+            z-index: 3;
             vertical-align: bottom;
         }
 

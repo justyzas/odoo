@@ -8,7 +8,7 @@ import { useService } from "@web/core/utils/hooks";
 import { useSetupAction } from "@web/search/action_hook";
 import { Layout } from "@web/search/layout";
 import { standardActionServiceProps } from "@web/webclient/actions/action_service";
-import { ShiftTemplatePicker } from "./template_picker";
+import { floatToTimeInput, getSpanHours, ShiftTemplatePicker } from "./template_picker";
 
 const { DateTime } = luxon;
 
@@ -34,11 +34,8 @@ function formatHours(hours) {
     return `${Math.round(hours * 100) / 100}h`;
 }
 
-function formatFloatHour(hours) {
-    const minutes = Math.round(hours * 60);
-    const hh = String(Math.floor(minutes / 60) % 24).padStart(2, "0");
-    const mm = String(minutes % 60).padStart(2, "0");
-    return `${hh}:${mm}`;
+function toMinutes(hours) {
+    return Math.round(hours * 60);
 }
 
 function cellKey(employeeId, date) {
@@ -46,12 +43,25 @@ function cellKey(employeeId, date) {
 }
 
 /**
+ * Lowercase, without accents: "Čiurlionis" matches "ciur".
+ */
+function normalizeText(text) {
+    return (text || "")
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .toLowerCase();
+}
+
+/**
  * Monthly shift planning grid: employees on the left, the days of the month
  * on top, one cell per employee and day.
  *
  * Editing (planners only): pick a template in the toolbar (the "brush") and
- * click cells, or click a cell without a brush to choose a template in a
- * popover. Changes are kept in the browser until "Save".
+ * click cells, or click a cell without a brush to choose a template or a
+ * custom time in a popover. Changes are kept in the browser until "Save".
+ *
+ * A cell value is ``null`` (no shift) or
+ * ``{ templateId, hourFrom, hourTo, breakMinutes }`` (local hours).
  */
 export class ShiftPlanningGrid extends Component {
     static template = "hr_shift_planning.ShiftPlanningGrid";
@@ -69,8 +79,8 @@ export class ShiftPlanningGrid extends Component {
             // in place, so it is kept out of the reactivity system.
             grid: markRaw({
                 employees: [],
+                departments: [],
                 days: [],
-                shifts: {},
                 originals: {},
                 templates: {},
                 palette: [],
@@ -78,8 +88,10 @@ export class ShiftPlanningGrid extends Component {
             }),
             selected: null, // { employeeId, date }
             brush: null, // null: no brush, false: clear, number: template id
-            pending: {}, // cell key -> template id, or false to remove the shift
+            pending: {}, // cell key -> cell value (null removes the shift)
             saving: false,
+            search: "",
+            department: "",
         });
         this.loadId = 0;
         this.hoveredDay = null;
@@ -106,6 +118,16 @@ export class ShiftPlanningGrid extends Component {
 
     get changeCount() {
         return Object.keys(this.state.pending).length;
+    }
+
+    get visibleEmployees() {
+        const search = normalizeText(this.state.search.trim());
+        const department = this.state.department;
+        return this.state.grid.employees.filter(
+            (employee) =>
+                (!search || employee.searchText.includes(search)) &&
+                (!department || employee.department === department)
+        );
     }
 
     // ------------------------------------------------------------------
@@ -142,41 +164,32 @@ export class ShiftPlanningGrid extends Component {
         const employees = data.employees.map((employee) => ({
             ...employee,
             info: employee.job_title || employee.department,
+            searchText: normalizeText(employee.name),
         }));
+        const departments = [...new Set(employees.map((e) => e.department).filter(Boolean))].sort();
         const templates = {};
         for (const template of data.templates) {
-            const color = template.color || DEFAULT_COLOR;
-            const timeLabel = `${formatFloatHour(template.hour_from)} - ${formatFloatHour(template.hour_to)}`;
             templates[template.id] = {
                 ...template,
-                timeLabel,
-                style: getColorStyle(color),
-                // Cell shown for a template applied in the grid but not saved yet
-                cell: {
-                    label: template.code,
-                    hours: formatHours(template.duration),
-                    style: getColorStyle(color),
-                    title: [
-                        template.name,
-                        timeLabel,
-                        template.break_minutes ? _t("Break: %s min", template.break_minutes) : "",
-                    ]
-                        .filter(Boolean)
-                        .join("\n"),
-                },
+                timeLabel: `${floatToTimeInput(template.hour_from)} - ${floatToTimeInput(template.hour_to)}`,
+                style: getColorStyle(template.color || DEFAULT_COLOR),
             };
         }
-        const shifts = {};
         const originals = {};
         for (const shift of data.shifts) {
-            const key = cellKey(shift.employee_id, shift.date);
-            shifts[key] = this.buildShiftCell(shift, templates[shift.template_id]);
-            originals[key] = { templateId: shift.template_id, isCustom: shift.is_custom };
+            const start = deserializeDateTime(shift.start);
+            const end = deserializeDateTime(shift.end);
+            originals[cellKey(shift.employee_id, shift.date)] = {
+                templateId: shift.template_id,
+                hourFrom: start.hour + start.minute / 60,
+                hourTo: end.hour + end.minute / 60,
+                breakMinutes: shift.break_minutes,
+            };
         }
         return {
             employees,
+            departments,
             days,
-            shifts,
             originals,
             templates,
             palette: data.templates.filter((t) => t.active).map((t) => templates[t.id]),
@@ -184,22 +197,51 @@ export class ShiftPlanningGrid extends Component {
         };
     }
 
-    buildShiftCell(shift, template) {
-        const start = deserializeDateTime(shift.start).toFormat("HH:mm");
-        const end = deserializeDateTime(shift.end).toFormat("HH:mm");
-        const title = [
-            template ? template.name : _t("Custom time"),
-            `${start} - ${end}`,
-            shift.break_minutes ? _t("Break: %s min", shift.break_minutes) : "",
-        ];
+    templateValue(templateId) {
+        const template = this.state.grid.templates[templateId];
         return {
-            label: template
-                ? template.code + (shift.is_custom ? "*" : "")
-                : `${start.slice(0, 2)}-${end.slice(0, 2)}`,
-            hours: formatHours(shift.duration),
-            style: getColorStyle(template ? template.color || DEFAULT_COLOR : DEFAULT_COLOR),
-            title: title.filter(Boolean).join("\n"),
+            templateId,
+            hourFrom: template.hour_from,
+            hourTo: template.hour_to,
+            breakMinutes: template.break_minutes,
         };
+    }
+
+    /**
+     * Whether a value has another time than its template (or no template).
+     */
+    isCustom(value) {
+        const template = this.state.grid.templates[value.templateId];
+        return (
+            !template ||
+            toMinutes(template.hour_from) !== toMinutes(value.hourFrom) ||
+            toMinutes(template.hour_to) !== toMinutes(value.hourTo) ||
+            template.break_minutes !== value.breakMinutes
+        );
+    }
+
+    sameValue(a, b) {
+        if (!a || !b) {
+            return !a && !b;
+        }
+        return (
+            (a.templateId || false) === (b.templateId || false) &&
+            toMinutes(a.hourFrom) === toMinutes(b.hourFrom) &&
+            toMinutes(a.hourTo) === toMinutes(b.hourTo) &&
+            a.breakMinutes === b.breakMinutes
+        );
+    }
+
+    getValue(employeeId, date) {
+        const key = cellKey(employeeId, date);
+        if (key in this.state.pending) {
+            return this.state.pending[key];
+        }
+        return this.state.grid.originals[key] || null;
+    }
+
+    getDuration(value) {
+        return Math.max(getSpanHours(value.hourFrom, value.hourTo) - value.breakMinutes / 60, 0);
     }
 
     /**
@@ -207,14 +249,42 @@ export class ShiftPlanningGrid extends Component {
      */
     getCell(employee, day) {
         const key = cellKey(employee.id, day.key);
-        if (key in this.state.pending) {
-            const templateId = this.state.pending[key];
-            return {
-                shift: templateId ? this.state.grid.templates[templateId].cell : null,
-                dirty: true,
-            };
+        const dirty = key in this.state.pending;
+        const value = this.getValue(employee.id, day.key);
+        if (!value) {
+            return { shift: null, dirty };
         }
-        return { shift: this.state.grid.shifts[key] || null, dirty: false };
+        const template = this.state.grid.templates[value.templateId];
+        const from = floatToTimeInput(value.hourFrom);
+        const to = floatToTimeInput(value.hourTo);
+        const custom = this.isCustom(value);
+        const title = [
+            template ? template.name : _t("Custom time"),
+            `${from} - ${to}`,
+            value.breakMinutes ? _t("Break: %s min", value.breakMinutes) : "",
+        ];
+        return {
+            shift: {
+                label: template
+                    ? template.code + (custom ? "*" : "")
+                    : `${from.slice(0, 2)}-${to.slice(0, 2)}`,
+                hours: formatHours(this.getDuration(value)),
+                style: template ? template.style : getColorStyle(DEFAULT_COLOR),
+                title: title.filter(Boolean).join("\n"),
+            },
+            dirty,
+        };
+    }
+
+    getEmployeeTotal(employee) {
+        let total = 0;
+        for (const day of this.state.grid.days) {
+            const value = this.getValue(employee.id, day.key);
+            if (value) {
+                total += this.getDuration(value);
+            }
+        }
+        return formatHours(total);
     }
 
     getDayClass(day) {
@@ -254,18 +324,32 @@ export class ShiftPlanningGrid extends Component {
     /**
      * Record a change for a cell. A change that brings the cell back to its
      * saved state is dropped instead of being kept as pending.
+     *
+     * @param {number} employeeId
+     * @param {string} date
+     * @param {Object|null} value
      */
-    applyChange(employeeId, date, templateId) {
+    applyChange(employeeId, date, value) {
         const key = cellKey(employeeId, date);
-        const original = this.state.grid.originals[key];
-        const unchanged = templateId
-            ? Boolean(original && original.templateId === templateId && !original.isCustom)
-            : !original;
-        if (unchanged) {
+        if (this.sameValue(value, this.state.grid.originals[key])) {
             delete this.state.pending[key];
         } else {
-            this.state.pending[key] = templateId;
+            this.state.pending[key] = value;
         }
+    }
+
+    /**
+     * Apply what the brush or the picker gives: false (clear), a template id,
+     * or a custom time value.
+     */
+    applySelection(employeeId, date, selection) {
+        let value = null;
+        if (typeof selection === "number") {
+            value = this.templateValue(selection);
+        } else if (selection) {
+            value = selection;
+        }
+        this.applyChange(employeeId, date, value);
     }
 
     selectBrush(value) {
@@ -274,9 +358,21 @@ export class ShiftPlanningGrid extends Component {
     }
 
     async save() {
-        const changes = Object.entries(this.state.pending).map(([key, templateId]) => {
+        const changes = Object.entries(this.state.pending).map(([key, value]) => {
             const [employeeId, date] = key.split("|");
-            return { employee_id: parseInt(employeeId), date, template_id: templateId };
+            const change = {
+                employee_id: parseInt(employeeId),
+                date,
+                template_id: value ? value.templateId || false : false,
+            };
+            if (value && this.isCustom(value)) {
+                change.custom = {
+                    hour_from: value.hourFrom,
+                    hour_to: value.hourTo,
+                    break_minutes: value.breakMinutes,
+                };
+            }
+            return change;
         });
         if (!changes.length) {
             return;
@@ -348,6 +444,14 @@ export class ShiftPlanningGrid extends Component {
         await this.load();
     }
 
+    onSearchInput(ev) {
+        this.state.search = ev.target.value;
+    }
+
+    onDepartmentChange(ev) {
+        this.state.department = ev.target.value;
+    }
+
     onGridClick(ev) {
         const cell = ev.target.closest("td[data-day]");
         if (!cell) {
@@ -360,11 +464,12 @@ export class ShiftPlanningGrid extends Component {
             return;
         }
         if (this.state.brush !== null) {
-            this.applyChange(employeeId, date, this.state.brush);
+            this.applySelection(employeeId, date, this.state.brush);
         } else {
             this.picker.open(cell, {
                 templates: this.state.grid.palette,
-                onSelect: (templateId) => this.applyChange(employeeId, date, templateId),
+                current: this.getValue(employeeId, date) || undefined,
+                onSelect: (selection) => this.applySelection(employeeId, date, selection),
             });
         }
     }

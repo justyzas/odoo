@@ -186,6 +186,32 @@ class TestHrShift(TransactionCase):
         created = self.Shift.search([("employee_id", "=", self.employee.id), ("date", "=", "2026-10-18")])
         self.assertEqual(created.template_id, self.morning)
 
+    def test_save_planning_changes_custom_time(self):
+        existing = self._create()  # 10-15 morning -> morning 06:00-12:00
+        self.Shift.with_user(self.planner).save_planning_changes([
+            {
+                "employee_id": self.employee.id, "date": "2026-10-15", "template_id": self.morning.id,
+                "custom": {"hour_from": 6.0, "hour_to": 12.0, "break_minutes": 15},
+            },
+            {
+                "employee_id": self.employee.id, "date": "2026-10-16", "template_id": False,
+                "custom": {"hour_from": 20.0, "hour_to": 2.5, "break_minutes": 0},
+            },
+        ])
+        self.assertEqual(existing.template_id, self.morning)
+        self.assertEqual(existing.start_datetime, datetime(2026, 10, 15, 3, 0))
+        self.assertEqual(existing.end_datetime, datetime(2026, 10, 15, 9, 0))
+        self.assertEqual(existing.break_minutes, 15)
+        self.assertAlmostEqual(existing.duration, 5.75)
+        self.assertTrue(existing.is_custom)
+
+        created = self.Shift.search([("employee_id", "=", self.employee.id), ("date", "=", "2026-10-16")])
+        self.assertFalse(created.template_id)
+        self.assertEqual(created.start_datetime, datetime(2026, 10, 16, 17, 0))
+        self.assertEqual(created.end_datetime, datetime(2026, 10, 16, 23, 30))
+        self.assertAlmostEqual(created.duration, 6.5)
+        self.assertFalse(created.is_custom)
+
     def test_save_planning_changes_viewer_denied(self):
         with self.assertRaises(AccessError):
             self.Shift.with_user(self.viewer).save_planning_changes([

@@ -105,6 +105,20 @@ class HrShift(models.Model):
         self.ensure_one()
         return pytz.timezone(self.employee_id.tz or self.env.user.tz or "UTC")
 
+    def _get_time_values(self, hour_from, hour_to):
+        """Start/end (naive UTC) of a shift working from ``hour_from`` to
+        ``hour_to`` (local float hours) on this shift's date, in the employee's
+        timezone. An end earlier than or equal to the start is on the next day."""
+        self.ensure_one()
+        tz = self._get_tz()
+        start_local = datetime.combine(self.date, _float_to_time(hour_from))
+        end_date = self.date + timedelta(days=1) if hour_to <= hour_from else self.date
+        end_local = datetime.combine(end_date, _float_to_time(hour_to))
+        return {
+            "start_datetime": tz.localize(start_local).astimezone(pytz.utc).replace(tzinfo=None),
+            "end_datetime": tz.localize(end_local).astimezone(pytz.utc).replace(tzinfo=None),
+        }
+
     def _get_template_values(self):
         """Start/end (naive UTC) and break the template gives for this shift's
         employee and date, or None when there is no template or date."""
@@ -112,13 +126,8 @@ class HrShift(models.Model):
         template = self.template_id
         if not template or not self.date:
             return None
-        tz = self._get_tz()
-        start_local = datetime.combine(self.date, _float_to_time(template.hour_from))
-        end_date = self.date + timedelta(days=1) if template.is_overnight else self.date
-        end_local = datetime.combine(end_date, _float_to_time(template.hour_to))
         return {
-            "start_datetime": tz.localize(start_local).astimezone(pytz.utc).replace(tzinfo=None),
-            "end_datetime": tz.localize(end_local).astimezone(pytz.utc).replace(tzinfo=None),
+            **self._get_time_values(template.hour_from, template.hour_to),
             "break_minutes": template.break_minutes,
         }
 
@@ -216,8 +225,14 @@ class HrShift(models.Model):
         """Apply the changes made in the planning grid, in one call.
 
         :param changes: list of ``{"employee_id": int, "date": "YYYY-MM-DD",
-            "template_id": int | False}``; ``template_id: False`` removes the
-            shift of that employee on that day.
+            "template_id": int | False, "custom": {...}}``:
+
+            - with ``custom`` (``{"hour_from": float, "hour_to": float,
+              "break_minutes": int}``, local hours): a shift with that time,
+              linked to ``template_id`` if given;
+            - otherwise ``template_id`` sets a shift with the template's time,
+              and ``template_id: False`` removes the shift of that employee
+              on that day.
         """
         if not changes:
             return True
@@ -234,8 +249,20 @@ class HrShift(models.Model):
         for change in changes:
             key = (change["employee_id"], fields.Date.to_date(change["date"]))
             shift = existing.get(key)
-            template_id = change["template_id"]
-            if not template_id:
+            template_id = change.get("template_id") or False
+            custom = change.get("custom")
+            if custom:
+                record = shift or self.new({"employee_id": key[0], "date": key[1]})
+                values = {
+                    "template_id": template_id,
+                    "break_minutes": custom.get("break_minutes") or 0,
+                    **record._get_time_values(custom["hour_from"], custom["hour_to"]),
+                }
+                if shift:
+                    shift.write(values)
+                else:
+                    to_create.append({"employee_id": key[0], "date": key[1], **values})
+            elif not template_id:
                 to_delete |= shift or self.browse()
             elif shift:
                 shift.template_id = template_id
