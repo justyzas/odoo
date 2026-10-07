@@ -8,6 +8,14 @@
         groups="group_shift_viewer"
         sequence="50"/>
 
+        <!-- Temporary: replaced by the planning grid in step 3 -->
+        <menuitem
+            id="menu_hr_shift_list"
+            name="Shifts (list)"
+            action="hr_shift_action"
+            parent="menu_hr_shift_planning_root"
+            sequence="20"/>
+
         <menuitem
             id="menu_hr_shift_template"
             name="Templates"

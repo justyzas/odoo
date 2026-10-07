@@ -1,3 +1,5 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_hr_shift_template_viewer,hr.shift.template.viewer,model_hr_shift_template,group_shift_viewer,1,0,0,0
 access_hr_shift_template_planner,hr.shift.template.planner,model_hr_shift_template,group_shift_planner,1,1,1,1
+access_hr_shift_viewer,hr.shift.viewer,model_hr_shift,group_shift_viewer,1,0,0,0
+access_hr_shift_planner,hr.shift.planner,model_hr_shift,group_shift_planner,1,1,1,1
