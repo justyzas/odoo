@@ -1,0 +1,643 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* hr_shift_planning
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 19.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-07 15:40+0000\n"
+"PO-Revision-Date: 2026-10-07 15:40+0000\n"
+"Last-Translator: SEFU, MB developers\n"
+"Language-Team: \n"
+"Language: lt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "%(hours)s h in the 7 days up to this day (maximum %(max)s h)"
+msgstr "%(hours)s val. per 7 dienas iki šios dienos (daugiausia %(max)s val.)"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "%(hours)s h shift (maximum %(max)s h)"
+msgstr "%(hours)s val. pamaina (daugiausia %(max)s val.)"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__active
+msgid "Active"
+msgstr "Aktyvus"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "All departments"
+msgstr "Visi skyriai"
+
+#. module: hr_shift_planning
+#: model:ir.model.constraint,message:hr_shift_planning.constraint_hr_shift_employee_date_uniq
+msgid "An employee can only have one shift per day."
+msgstr "Darbuotojas per dieną gali turėti tik vieną pamainą."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "Apply"
+msgstr "Pritaikyti"
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_search
+msgid "Archived"
+msgstr "Archyvuota"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "Break (min)"
+msgstr "Pertrauka (min.)"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__break_minutes
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__break_minutes
+msgid "Break (minutes)"
+msgstr "Pertrauka (min.)"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Break: %s min"
+msgstr "Pertrauka: %s min."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "Cancel"
+msgstr "Atšaukti"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift_template__color
+msgid "Cell background color in the planning grid."
+msgstr "Langelio fono spalva planavimo lentelėje."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "Clear"
+msgstr "Išvalyti"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__code
+msgid "Code"
+msgstr "Kodas"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__color
+msgid "Color"
+msgstr "Spalva"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__company_id
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__company_id
+msgid "Company"
+msgstr "Įmonė"
+
+#. module: hr_shift_planning
+#: model:ir.model,name:hr_shift_planning.model_res_config_settings
+msgid "Config Settings"
+msgstr "Konfigūracijos nustatymai"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Copy"
+msgstr "Kopijuoti"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Copy previous month"
+msgstr "Kopijuoti praėjusį mėnesį"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Copy previous week"
+msgstr "Kopijuoti praėjusią savaitę"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Copy shifts"
+msgstr "Kopijuoti pamainas"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid ""
+"Copy the shifts of %(source)s to %(target)s for %(count)s employees? Shifts "
+"already planned this month are replaced. Nothing is saved until you click "
+"Save."
+msgstr "Kopijuoti %(source)s pamainas į %(target)s (darbuotojų: %(count)s)? Šį mėnesį jau suplanuotos pamainos bus pakeistos. Niekas neišsaugoma, kol nepaspausite „Išsaugoti“."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid ""
+"Copy the shifts of the week before to %(from)s - %(to)s for %(count)s "
+"employees? Shifts already planned on these days are replaced. Nothing is "
+"saved until you click Save."
+msgstr "Kopijuoti ankstesnės savaitės pamainas į %(from)s – %(to)s (darbuotojų: %(count)s)? Šiomis dienomis jau suplanuotos pamainos bus pakeistos. Niekas neišsaugoma, kol nepaspausite „Išsaugoti“."
+
+#. module: hr_shift_planning
+#: model_terms:ir.actions.act_window,help:hr_shift_planning.hr_shift_template_action
+msgid "Create a shift template"
+msgstr "Sukurkite pamainos šabloną"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__create_uid
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__create_uid
+msgid "Created by"
+msgstr "Sukūrė"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__create_date
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__create_date
+msgid "Created on"
+msgstr "Sukurta"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__is_custom
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Custom Time"
+msgstr "Kitas laikas"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "Custom time"
+msgstr "Kitas laikas"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Custom time without template"
+msgstr "Kitas laikas be šablono"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__date
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Date"
+msgstr "Data"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift__date
+msgid "Day the shift starts on. A night shift belongs to the day it starts."
+msgstr "Diena, kurią pamaina prasideda. Naktinė pamaina priskiriama dienai, kurią prasideda."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Discard"
+msgstr "Atmesti"
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+msgid "Display"
+msgstr "Rodymas"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__display_name
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__display_name
+#: model:ir.model.fields,field_description:hr_shift_planning.field_res_config_settings__display_name
+msgid "Display Name"
+msgstr "Rodomas pavadinimas"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__duration
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__duration
+msgid "Duration (hours)"
+msgstr "Trukmė (val.)"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__employee_id
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Employee"
+msgstr "Darbuotojas"
+
+#. module: hr_shift_planning
+#: model:ir.model,name:hr_shift_planning.model_hr_shift
+msgid "Employee Shift"
+msgstr "Darbuotojo pamaina"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__end_datetime
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__hour_to
+msgid "End"
+msgstr "Pabaiga"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__is_overnight
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_search
+msgid "Ends Next Day"
+msgstr "Baigiasi kitą dieną"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "HH:MM"
+msgstr "VV:MM"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__id
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__id
+#: model:ir.model.fields,field_description:hr_shift_planning.field_res_config_settings__id
+msgid "ID"
+msgstr "ID"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift_template__hour_to
+msgid ""
+"If the end is earlier than or equal to the start, the shift ends on the next"
+" day."
+msgstr "Jei pabaiga ankstesnė už pradžią arba jai lygi, pamaina baigiasi kitą dieną."
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.res_config_settings_view_form
+msgid "Labour Code Warnings"
+msgstr "Darbo kodekso įspėjimai"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Labour code warnings"
+msgstr "Darbo kodekso įspėjimai"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__write_uid
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__write_uid
+msgid "Last Updated by"
+msgstr "Paskutinį kartą atnaujino"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__write_date
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__write_date
+msgid "Last Updated on"
+msgstr "Paskutinį kartą atnaujinta"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_res_config_settings__shift_max_week_hours
+msgid "Maximum Hours per 7 Days"
+msgstr "Daugiausia valandų per 7 dienas"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_res_config_settings__shift_max_shift_hours
+msgid "Maximum Shift Length"
+msgstr "Ilgiausia pamaina"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_res_config_settings__shift_min_rest_hours
+msgid "Minimum Rest Between Shifts"
+msgstr "Trumpiausias poilsis tarp pamainų"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__name
+msgid "Name"
+msgstr "Pavadinimas"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Next month"
+msgstr "Kitas mėnuo"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "No employees"
+msgstr "Darbuotojų nėra"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "No shift templates yet: create them in Working Hours → Templates."
+msgstr "Pamainų šablonų dar nėra: sukurkite juos skiltyje Darbo valandos → Šablonai."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "None"
+msgstr "Nėra"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Only %(rest)s h of rest between shifts (minimum %(min)s h)"
+msgstr "Tik %(rest)s val. poilsio tarp pamainų (mažiausiai %(min)s val.)"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Other"
+msgstr "Kita"
+
+#. module: hr_shift_planning
+#: model_terms:ir.actions.act_window,help:hr_shift_planning.hr_shift_action
+msgid ""
+"Pick an employee, a day and a shift template. The start and end are filled "
+"in from the template."
+msgstr "Pasirinkite darbuotoją, dieną ir pamainos šabloną. Pradžia ir pabaiga užpildomos pagal šabloną."
+
+#. module: hr_shift_planning
+#: model_terms:ir.actions.act_window,help:hr_shift_planning.hr_shift_action
+msgid "Plan a shift"
+msgstr "Suplanuokite pamainą"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Planned hours this month"
+msgstr "Suplanuotos šio mėnesio valandos"
+
+#. module: hr_shift_planning
+#: model:res.groups,name:hr_shift_planning.group_shift_planner
+msgid "Planner"
+msgstr "Planuotojas"
+
+#. module: hr_shift_planning
+#: model:ir.actions.client,name:hr_shift_planning.hr_shift_planning_grid_action
+#: model:ir.ui.menu,name:hr_shift_planning.menu_hr_shift_planning_grid
+msgid "Planning"
+msgstr "Planavimas"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Previous month"
+msgstr "Praėjęs mėnuo"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Previous month → this month"
+msgstr "Praėjęs mėnuo → šis mėnuo"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Previous week → week of the selected day"
+msgstr "Praėjusi savaitė → pažymėtos dienos savaitė"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Save"
+msgstr "Išsaugoti"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Search employee..."
+msgstr "Ieškoti darbuotojo..."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Select a day of the week to fill first."
+msgstr "Pirmiausia pažymėkite dieną savaitėje, kurią norite užpildyti."
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__sequence
+msgid "Sequence"
+msgstr "Eiliškumas"
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_form
+msgid "Shift"
+msgstr "Pamaina"
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.res_config_settings_view_form
+msgid "Shift Planning"
+msgstr "Pamainų planavimas"
+
+#. module: hr_shift_planning
+#: model:ir.model,name:hr_shift_planning.model_hr_shift_template
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+msgid "Shift Template"
+msgstr "Pamainos šablonas"
+
+#. module: hr_shift_planning
+#: model:ir.actions.act_window,name:hr_shift_planning.hr_shift_template_action
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_list
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_search
+msgid "Shift Templates"
+msgstr "Pamainų šablonai"
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/res_config_settings.py:0
+msgid "Shift planning limits cannot be negative."
+msgstr "Pamainų planavimo ribos negali būti neigiamos."
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift_template.py:0
+msgid "Shift start and end must be between 00:00 and 23:59."
+msgstr "Pamainos pradžia ir pabaiga turi būti tarp 00:00 ir 23:59."
+
+#. module: hr_shift_planning
+#: model:ir.actions.act_window,name:hr_shift_planning.hr_shift_action
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_list
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Shifts"
+msgstr "Pamainos"
+
+#. module: hr_shift_planning
+#: model:ir.ui.menu,name:hr_shift_planning.menu_hr_shift_list
+msgid "Shifts (list)"
+msgstr "Pamainos (sąrašas)"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift_template__code
+msgid "Short code (1-3 characters) shown in the planning grid cells."
+msgstr "Trumpas kodas (1–3 simboliai), rodomas planavimo lentelės langeliuose."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__start_datetime
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__hour_from
+msgid "Start"
+msgstr "Pradžia"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Stay"
+msgstr "Likti"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__template_id
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Template"
+msgstr "Šablonas"
+
+#. module: hr_shift_planning
+#: model:ir.ui.menu,name:hr_shift_planning.menu_hr_shift_template
+msgid "Templates"
+msgstr "Šablonai"
+
+#. module: hr_shift_planning
+#: model_terms:ir.actions.act_window,help:hr_shift_planning.hr_shift_template_action
+msgid ""
+"Templates (e.g. Morning 06:00-14:00) are assigned to employees in the "
+"planning grid."
+msgstr "Šablonai (pvz. Rytinė 06:00–14:00) priskiriami darbuotojams planavimo lentelėje."
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift.py:0
+#: code:addons/hr_shift_planning/models/hr_shift_template.py:0
+msgid "The break cannot be negative."
+msgstr "Pertrauka negali būti neigiama."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift.py:0
+#: code:addons/hr_shift_planning/models/hr_shift_template.py:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.js:0
+msgid "The break must be shorter than the shift."
+msgstr "Pertrauka turi būti trumpesnė už pamainą."
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.res_config_settings_view_form
+msgid ""
+"The planning grid warns (without blocking) when a plan goes beyond these "
+"limits."
+msgstr "Planavimo lentelė įspėja (bet neblokuoja), kai planas viršija šias ribas."
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift.py:0
+msgid "The shift end must be after its start."
+msgstr "Pamainos pabaiga turi būti vėlesnė už pradžią."
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift.py:0
+msgid "The shift of %(employee)s must start on %(date)s."
+msgstr "Darbuotojo %(employee)s pamaina turi prasidėti %(date)s."
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift_template.py:0
+msgid "The shift template code cannot be empty."
+msgstr "Pamainos šablono kodas negali būti tuščias."
+
+#. module: hr_shift_planning
+#: model:ir.model.constraint,message:hr_shift_planning.constraint_hr_shift_template_code_company_uniq
+msgid "The shift template code must be unique per company."
+msgstr "Pamainos šablono kodas įmonėje turi būti unikalus."
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift__is_custom
+msgid "The shift time differs from its template."
+msgstr "Pamainos laikas skiriasi nuo šablono."
+
+#. module: hr_shift_planning
+#: model:res.groups,comment:hr_shift_planning.group_shift_planner
+msgid "The user can plan shifts and manage shift templates."
+msgstr "Naudotojas gali planuoti pamainas ir tvarkyti pamainų šablonus."
+
+#. module: hr_shift_planning
+#: model:res.groups,comment:hr_shift_planning.group_shift_viewer
+msgid "The user can see the shift planning, but cannot change it."
+msgstr "Naudotojas mato pamainų planą, bet negali jo keisti."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Today"
+msgstr "Šiandien"
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_list
+msgid "Total"
+msgstr "Iš viso"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Unsaved changes"
+msgstr "Neišsaugoti pakeitimai"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.js:0
+msgid "Use the 24-hour format HH:MM, e.g. 06:00 or 22:30."
+msgstr "Naudokite 24 val. formatą VV:MM, pvz. 06:00 arba 22:30."
+
+#. module: hr_shift_planning
+#: model:res.groups,name:hr_shift_planning.group_shift_viewer
+msgid "Viewer"
+msgstr "Peržiūra"
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Without Template"
+msgstr "Be šablono"
+
+#. module: hr_shift_planning
+#: model:ir.ui.menu,name:hr_shift_planning.menu_hr_shift_planning_root
+#: model:res.groups.privilege,name:hr_shift_planning.res_groups_privilege_shift_planning
+msgid "Working Hours"
+msgstr "Darbo valandos"
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+msgid "Working Time"
+msgstr "Darbo laikas"
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift__duration
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift_template__duration
+msgid "Working hours of the shift, excluding the break."
+msgstr "Pamainos darbo valandos be pertraukos."
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "You have unsaved changes in the planning. Discard them?"
+msgstr "Plane yra neišsaugotų pakeitimų. Ar juos atmesti?"
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+msgid "e.g. M"
+msgstr "pvz. R"
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+msgid "e.g. Morning"
+msgstr "pvz. Rytinė"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Σ h"
+msgstr "Σ val."

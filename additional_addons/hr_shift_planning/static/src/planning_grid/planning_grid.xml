@@ -135,6 +135,7 @@
                             </th>
                             <td t-foreach="state.grid.days" t-as="day" t-key="day.key"
                                 class="o_shift_count" t-att-data-day="day.key"
+                                t-att-class="{ o_shift_week_start: day.isWeekStart }"
                                 t-esc="countRow.counts[day.key] or ''"/>
                             <td class="o_shift_total"/>
                         </tr>

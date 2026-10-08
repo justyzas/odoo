@@ -1,3 +1,16 @@
+// Colors: Odoo compiles Bootstrap without the "bs-" CSS variable prefix, so
+// var(--bs-*) does not exist in the backend. Use the SCSS variables instead
+// (they also follow the dark mode bundle).
+$o-shift-bg: $o-view-background-color;
+$o-shift-border: $border-color;
+$o-shift-muted: $o-gray-600;
+$o-shift-weekend-bg: $o-gray-200;
+$o-shift-footer-bg: $o-gray-100;
+$o-shift-primary: $primary;
+$o-shift-primary-subtle: mix($primary, $o-view-background-color, 15%);
+$o-shift-holiday-bg: mix($warning, $o-view-background-color, 25%);
+$o-shift-warning: $warning;
+
 // Warning list popover
 .o_shift_warning_list {
     min-width: 320px;
@@ -19,7 +32,7 @@
         font-weight: bold;
     }
     .o_shift_swatch_clear {
-        background-color: var(--bs-tertiary-bg);
+        background-color: $o-shift-footer-bg;
     }
     .o_shift_custom_time {
         width: 72px;
@@ -42,8 +55,8 @@
         font-weight: bold;
         border: 2px solid transparent;
         &.o_shift_brush_active {
-            border-color: var(--bs-primary);
-            box-shadow: 0 0 0 2px var(--bs-primary-bg-subtle);
+            border-color: $o-shift-primary;
+            box-shadow: 0 0 0 2px $o-shift-primary-subtle;
             transform: translateY(-1px);
         }
     }
@@ -55,9 +68,9 @@
         user-select: none;
 
         th, td {
-            border-right: 1px solid var(--bs-border-color);
-            border-bottom: 1px solid var(--bs-border-color);
-            background-color: var(--bs-body-bg);
+            border-right: 1px solid $o-shift-border;
+            border-bottom: 1px solid $o-shift-border;
+            background-color: $o-shift-bg;
         }
 
         // Sticky day header row
@@ -98,7 +111,7 @@
             text-align: right;
             padding: 4px 8px;
             font-weight: bold;
-            border-left: 1px solid var(--bs-border-color);
+            border-left: 1px solid $o-shift-border;
             white-space: nowrap;
         }
         .o_shift_total_header {
@@ -115,12 +128,12 @@
         }
         .o_shift_weekday {
             font-size: 0.8em;
-            color: var(--bs-secondary-color);
+            color: $o-shift-muted;
         }
 
         .o_shift_employee_info {
             font-size: 0.8em;
-            color: var(--bs-secondary-color);
+            color: $o-shift-muted;
         }
 
         .o_shift_cell {
@@ -140,8 +153,8 @@
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background-color: var(--bs-warning);
-            border: 1px solid var(--bs-body-bg);
+            background-color: $o-shift-warning;
+            border: 1px solid $o-shift-bg;
         }
 
         .o_shift_chip {
@@ -161,22 +174,27 @@
             font-size: 0.75em;
         }
 
+        // Week separator: thicker line before each Monday, full grid height
+        .o_shift_week_start {
+            border-left: 3px solid $o-shift-muted;
+        }
+
         // Day kinds
         .o_shift_weekend {
-            background-color: var(--bs-tertiary-bg);
+            background-color: $o-shift-weekend-bg;
         }
         .o_shift_holiday {
-            background-color: var(--bs-warning-bg-subtle);
+            background-color: $o-shift-holiday-bg;
         }
         thead .o_shift_today {
-            background-color: var(--bs-primary);
-            color: var(--bs-white);
+            background-color: $o-shift-primary;
+            color: $white;
             .o_shift_weekday {
                 color: inherit;
             }
         }
         tbody .o_shift_today {
-            background-color: var(--bs-primary-bg-subtle);
+            background-color: $o-shift-primary-subtle;
         }
 
         // Hover: row via CSS, column via a class set from JS. Drawn as a
@@ -189,19 +207,19 @@
         // Selection
         .o_shift_selected_employee,
         thead .o_shift_selected_day {
-            background-color: var(--bs-primary-bg-subtle);
-            color: var(--bs-primary-text-emphasis);
+            background-color: $o-shift-primary-subtle;
+            color: $o-shift-primary;
             font-weight: bold;
-            box-shadow: inset 0 -3px 0 var(--bs-primary);
+            box-shadow: inset 0 -3px 0 $o-shift-primary;
         }
         .o_shift_selected_employee {
-            box-shadow: inset 3px 0 0 var(--bs-primary);
+            box-shadow: inset 3px 0 0 $o-shift-primary;
         }
         // Rectangle being painted by dragging the brush
         .o_shift_cell.o_shift_drag_selected {
             background-image: linear-gradient(
-                rgba(var(--bs-primary-rgb), 0.25),
-                rgba(var(--bs-primary-rgb), 0.25)
+                rgba($o-shift-primary, 0.25),
+                rgba($o-shift-primary, 0.25)
             );
         }
 
@@ -211,7 +229,7 @@
                 position: sticky;
                 bottom: 0;
                 z-index: 2;
-                background-color: var(--bs-tertiary-bg);
+                background-color: $o-shift-footer-bg;
                 text-align: center;
                 font-size: 0.85em;
                 padding: 2px;
@@ -238,14 +256,14 @@
 
         // Labour code warning: yellow frame (the selection frame wins)
         .o_shift_cell.o_shift_warning {
-            box-shadow: inset 0 0 0 3px var(--bs-warning);
+            box-shadow: inset 0 0 0 3px $o-shift-warning;
         }
 
         .o_shift_cell.o_shift_selected_cell {
-            box-shadow: inset 0 0 0 2px var(--bs-primary);
+            box-shadow: inset 0 0 0 2px $o-shift-primary;
         }
         .o_shift_cell.o_shift_selected_cell.o_shift_warning {
-            box-shadow: inset 0 0 0 2px var(--bs-primary), inset 0 0 0 5px var(--bs-warning);
+            box-shadow: inset 0 0 0 2px $o-shift-primary, inset 0 0 0 5px $o-shift-warning;
         }
     }
 }

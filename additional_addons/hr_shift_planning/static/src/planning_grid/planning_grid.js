@@ -146,6 +146,8 @@ export class ShiftPlanningGrid extends Component {
             drag: null, // { start, end }: { employeeId, date } corners of the dragged rectangle
         });
         this.loadId = 0;
+        this.changeVersion = 0; // bumped on every change of state.pending
+        this.warningsCache = null;
         this.hoveredDay = null;
         this.scrollToSelected = null; // scrollIntoView options, set to scroll after the next patch
         onPatched(() => {
@@ -221,6 +223,9 @@ export class ShiftPlanningGrid extends Component {
                 day: day.day,
                 weekday: day.toFormat("ccc"),
                 isWeekend: day.weekday >= 6,
+                // Weeks start on Monday (luxon weekday 1), whatever the locale.
+                // No separator before the 1st: the employee column border is there.
+                isWeekStart: day.weekday === 1 && day.day !== 1,
                 isToday: day.hasSame(this.today, "day"),
                 holiday: holidays[key] || "",
             });
@@ -367,6 +372,18 @@ export class ShiftPlanningGrid extends Component {
      *  problem, for the warning list.
      */
     computeWarnings() {
+        // Called several times per render (grid, warning button): computed
+        // once per grid data / pending changes version.
+        const cache = this.warningsCache;
+        if (cache && cache.grid === this.state.grid && cache.version === this.changeVersion) {
+            return cache.result;
+        }
+        const result = this._computeWarnings();
+        this.warningsCache = { grid: this.state.grid, version: this.changeVersion, result };
+        return result;
+    }
+
+    _computeWarnings() {
         const { employees, checkDays, limits } = this.state.grid;
         const cells = {};
         const issues = [];
@@ -497,6 +514,7 @@ export class ShiftPlanningGrid extends Component {
         const selected = this.state.selected;
         return {
             o_shift_weekend: day.isWeekend,
+            o_shift_week_start: day.isWeekStart,
             o_shift_holiday: Boolean(day.holiday),
             o_shift_today: day.isToday,
             o_shift_selected_day: Boolean(selected && selected.date === day.key),
@@ -599,11 +617,17 @@ export class ShiftPlanningGrid extends Component {
      */
     applyChange(employeeId, date, value) {
         const key = cellKey(employeeId, date);
+        this.changeVersion++;
         if (this.sameValue(value, this.state.grid.originals[key])) {
             delete this.state.pending[key];
         } else {
             this.state.pending[key] = value;
         }
+    }
+
+    clearPending() {
+        this.changeVersion++;
+        this.state.pending = {};
     }
 
     /**
@@ -651,12 +675,12 @@ export class ShiftPlanningGrid extends Component {
         } finally {
             this.state.saving = false;
         }
-        this.state.pending = {};
+        this.clearPending();
         await this.load();
     }
 
     discard() {
-        this.state.pending = {};
+        this.clearPending();
     }
 
     /**

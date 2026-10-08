@@ -3,8 +3,9 @@
 | | |
 |---|---|
 | **Specifikacija** | [hr_shift_planning_specs.md](hr_shift_planning_specs.md) |
+| **Produkto aprašymas** | [hr_shift_planning_product.md](hr_shift_planning_product.md) |
 | **Modulio vieta** | `additional_addons/hr_shift_planning/` |
-| **Paskutinis atnaujinimas** | 2026-10-07 |
+| **Paskutinis atnaujinimas** | 2026-10-08 |
 
 ## Darbo eiga
 
@@ -26,7 +27,8 @@ python odoo-bin -d <db> -u hr_shift_planning --stop-after-init
 Python testai:
 
 ```bash
-python odoo-bin -d <db> -u hr_shift_planning --test-enable --test-tags /hr_shift_planning --stop-after-init
+# MSYS_NO_PATHCONV=1: kitaip Git Bash „/hr_shift_planning“ paverčia Windows keliu ir paleidžiama 0 testų
+MSYS_NO_PATHCONV=1 python odoo-bin -c odoo.conf -d <db> -u hr_shift_planning --test-enable --test-tags /hr_shift_planning --stop-after-init
 ```
 
 JS (Hoot) testai: paleidus serverį, naršyklėje atidaryti `/web/tests` ir filtruoti pagal `hr_shift_planning`.
@@ -44,7 +46,7 @@ Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuvi�
 | Pamainos (sąrašas) | Shifts (list) |
 | Darbo valandos / Peržiūra | Working Hours / Viewer |
 | Darbo valandos / Planuotojas | Working Hours / Planner |
-| Išsaugoti / Atšaukti | Save / Discard |
+| Išsaugoti / Atmesti | Save / Discard |
 | Likti (įspėjimo lange) | Stay |
 | Išvalyti | Clear |
 | Kitas laikas | Custom time |
@@ -69,7 +71,7 @@ Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuvi�
 | 5 | Rankinis laikas, valandų suma, filtrai | FR-2.3 C, FR-2.5 [S] | ✅ Baigtas |
 | 6 | DK įspėjimai | FR-2.6 | ✅ Baigtas |
 | 7 | Greitinimo funkcijos | FR-2.3 D–E, FR-2.5 [C], FR-2.7 | ✅ Baigtas |
-| 8 | Vertimai ir galutinis patikrinimas | NFR-1–NFR-9 | ⬜ Neprasidėjęs |
+| 8 | Savaičių atskyrimas, vertimai ir galutinis patikrinimas | NFR-1–NFR-9, FR-2.2 | ✅ Baigtas |
 
 Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Baigtas
 
@@ -366,27 +368,44 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 
 ## Žingsnis 8 — Vertimai ir galutinis patikrinimas
 
-**Tikslas:** išversti sąsają į lietuvių kalbą, patvirtinti, kad visi nefunkciniai reikalavimai įvykdyti, ir paruošti modulį naudojimui.
+**Tikslas:** išversti sąsają į lietuvių kalbą, vizualiai atskirti savaites, patvirtinti, kad visi nefunkciniai reikalavimai įvykdyti, ir paruošti modulį naudojimui.
 
-**Apimtis:** NFR-1–NFR-9.
+**Apimtis:** NFR-1–NFR-9, FR-2.2 (savaičių atskyrimas).
 
-**Darbai:**
-- `i18n/hr_shift_planning.pot` ir `i18n/lt.po`: visi modelių, laukų, meniu, vaizdų, klaidų pranešimų ir lentelės (JS) tekstai.
-- Greitaveikos testas su 200 darbuotojų ir pilnu mėnesiu (testinių duomenų scenarijus).
-- Peržiūrėti, kad modulis neperrašo kitų modulių metodų ir vaizdų (NFR-4). Paleisti `hr` testus su įdiegtu moduliu.
-- Patikrinti išdiegimą.
-- `ruff check`.
-- Atnaujinti specifikaciją, jei kūrimo metu atsirado pakeitimų.
+Žingsnis vykdomas dviem dalimis, nes tikslų tekstų šabloną (`.pot`) sugeneruoja pats Odoo iš įdiegto modulio.
+
+**8A — Claude:**
+- Savaičių atskyrimas lentelėje: prieš kiekvieną pirmadienį ryškesnė vertikali linija per antraštę, darbuotojų eilutes ir apatines eilutes (savaitė prasideda pirmadienį, nepriklausomai nuo kalbos nustatymų).
+- Įspėjimų skaičiavimo talpykla (cache): vieną kartą per pakeitimą, ne kelis kartus per atvaizdavimą (NFR-5).
+- `uninstall_hook`: išdiegiant pašalinami `hr_shift_planning.*` sistemos parametrai.
+- Greitaveikos testinių duomenų scenarijus: [scripts/hr_shift_planning_perf_data.py](scripts/hr_shift_planning_perf_data.py) (200 darbuotojų „Perf Test“ skyriuje su mėnesio pamainomis; tas pats scenarijus juos ir ištrina).
+- NFR-4 peržiūra ir specifikacijos skyrius „5. Įgyvendinimo pastabos“.
+
+**8B — naudotojas, tada Claude:**
+- Naudotojas atnaujina modulį ir sugeneruoja tekstų šabloną:
+  ```bash
+  python odoo-bin i18n export -c odoo.conf -d <db> hr_shift_planning
+  ```
+  (sukuria `additional_addons/hr_shift_planning/i18n/hr_shift_planning.pot`).
+- Claude iš jo paruošia `i18n/lt.po`.
+- Naudotojas įdiegia lietuvių kalbą (jei dar neįdiegta: `python odoo-bin i18n loadlang -c odoo.conf -d <db> -l lt`) ir atnaujina modulį.
+
+**Neatlikta / naudotojo pusėje:**
+- `ruff check` — ruff šioje aplinkoje neįdiegtas.
+- `hr` testai su įdiegtu moduliu (NFR-4) — paleidžia naudotojas (nebūtina).
 
 **Testavimas:**
-- [ ] 8.1. Su 200 darbuotojų mėnuo įkeliamas per ≤ 2 s (NFR-5).
-- [ ] 8.2. Langelio paspaudimo atsakas jaučiasi akimirksniu.
-- [ ] 8.3. Lentelė veikia Chrome, Edge ir Firefox; esant < 1280 px pločiui slenkama horizontaliai (NFR-7).
-- [ ] 8.4. Perjungus naudotojo kalbą į lietuvių, visa modulio sąsaja (meniu, šablonai, pamainos, lentelė, įspėjimai, klaidų pranešimai) rodoma lietuviškai, be angliškų likučių (NFR-6).
-- [ ] 8.5. Angliška sąsaja veikia kaip anksčiau.
-- [ ] 8.6. `hr` modulio testai praeina su įdiegtu `hr_shift_planning` (NFR-4).
-- [ ] 8.7. Išdiegus modulį, Darbuotojų modulis veikia kaip anksčiau.
-- [ ] 8.8. Visi Python ir Hoot testai praeina (NFR-9).
+- [ ] 8.1. Lentelėje prieš kiekvieną pirmadienį matoma ryškesnė vertikali linija per visą lentelės aukštį (antraštė, darbuotojai, apatinės eilutės). Kitos dienų ribos lieka plonos.
+- [ ] 8.2. Mėnesiui prasidedant pirmadienį, linija prieš 1-ą dieną neperdengia darbuotojų stulpelio krašto (atrodo tvarkingai). Linijos išlieka slenkant, žymint ir tempiant.
+- [ ] 8.3. Su 200 darbuotojų mėnuo įkeliamas per ≤ 2 s (NFR-5). Testiniai duomenys: `python odoo-bin shell -c odoo.conf -d <db> < documents/scripts/hr_shift_planning_perf_data.py`. Laiką galima matyti naršyklės DevTools → Network → `get_planning_data`.
+- [ ] 8.4. Su 200 darbuotojų langelio paspaudimas, teptukas, tempimas ir klaviatūra veikia be juntamo vėlavimo. Po testo duomenys ištrinami: `PERF_MODE=delete python odoo-bin shell -c odoo.conf -d <db> < documents/scripts/hr_shift_planning_perf_data.py`.
+- [ ] 8.5. Lentelė veikia Chrome, Edge ir Firefox; esant < 1280 px pločiui slenkama horizontaliai (NFR-7).
+- [ ] 8.6. Perjungus naudotojo kalbą į lietuvių, visa modulio sąsaja (meniu, šablonai, pamainos, lentelė, įspėjimai, klaidų pranešimai) rodoma lietuviškai, be angliškų likučių (NFR-6).
+- [ ] 8.7. Angliška sąsaja veikia kaip anksčiau.
+- [ ] 8.8. `hr` modulio testai praeina su įdiegtu `hr_shift_planning` (NFR-4).
+- [ ] 8.9. Išdiegus modulį (galima bandyti DB kopijoje), Darbuotojų modulis veikia kaip anksčiau, Employees nustatymuose nebėra „Shift Planning“ bloko.
+- [ ] 8.10. Visi Python ir Hoot testai praeina (NFR-9).
+- [ ] 8.11. Spalvų ir prilipusių stulpelių patikrinimas (po `--bs-*` pataisos): priartinus / slenkant į šonus, Σ h ir darbuotojų stulpeliai bei antraštė turi baltą foną ir nepersidengia su langeliais; savaitgaliai pilkesni; šiandienos antraštė spalvota; šventės gelsvos; pažymėtas langelis, darbuotojas ir diena paryškinti; aktyvus teptukas su rėmeliu; tempiamas stačiakampis matomas; įspėjimo rėmelis geltonas; neišsaugoto pakeitimo taškelis oranžinis; apatinės eilutės su pilku fonu.
 
 **Commit message:** `hr_shift_planning: Lithuanian translation, performance check and final review`
 
@@ -419,3 +438,11 @@ Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Ba
 | 2026-10-07 | Žingsnis 6 įgyvendintas. Ribos saugomos sistemos parametruose (`hr_shift_planning.*`), nustatymų blokas pridėtas prie Employees nustatymų (tik naujas blokas, esami nekeičiami). Lentelės duomenys papildomai apima 6 dienas prieš mėnesį ir 1 dieną po jo. Įspėjimų mygtuką ir sąrašą mato ir Viewer |
 | 2026-10-07 | Žingsnis 6 ištestuotas, visi punktai praėjo |
 | 2026-10-07 | Žingsnis 7 įgyvendintas. Su teptuku langelis dabar užpildomas atleidus pelę (ne paspaudus), kad tas pats veiksmas tiktų ir tempimui. Po raidės / Delete žymėjimas pereina į kitą dieną. Kopijavimas taikomas matomiems (filtruotiems) darbuotojams. Serveris grąžina 7 (buvo 6) dienas prieš mėnesį — reikia savaitės kopijavimui |
+| 2026-10-07 | Žingsnis 7 ištestuotas, visi punktai praėjo |
+| 2026-10-07 | Į žingsnį 8 įtrauktas savaičių atskyrimas lentelėje (savaitė prasideda pirmadienį); specifikacijoje papildytas FR-2.2 |
+| 2026-10-07 | Žingsnis 8A: savaičių atskyrimas, įspėjimų talpykla, `uninstall_hook`, greitaveikos duomenų scenarijus, specifikacijos skyrius „Įgyvendinimo pastabos“. Vertimas (8B) laukia `.pot` failo |
+| 2026-10-07 | Žingsnis 8B: naudotojas sugeneravo `.pot`, paruoštas `i18n/lt.po` (105 įrašai). Sukurtas produkto aprašymas administratoriui ir techniniam prižiūrėtojui: [hr_shift_planning_product.md](hr_shift_planning_product.md) |
+| 2026-10-07 | Žingsnio 8 pataisa: savaičių atskyriklis nesimatė, nes CSS kintamasis `--bs-gray-500` Odoo backend'e neapibrėžtas. Dabar naudojamas SCSS kintamasis `$o-gray-600`, linija 3px |
+| 2026-10-07 | 8.8: `hr` testai darbinėje DB — 0 failed, 5 errors iš 122; visos 5 klaidos dėl DB duomenų (nėra naudotojo `admin` / slaptažodžio `admin`, naudotojas jau susietas su darbuotoju), ne dėl `hr_shift_planning`. Laikoma atlikta |
+| 2026-10-07 | Žingsnio 8 pataisa: Odoo kompiliuoja Bootstrap be `bs-` prefikso, todėl **visi** `var(--bs-*)` lentelės stiliuose buvo neapibrėžti — prilipę stulpeliai (Σ h, darbuotojai, antraštė) neturėjo fono ir priartinus persidengdavo su langeliais, dalis spalvų (savaitgaliai, šiandiena, šventės, žymėjimas, įspėjimai) nerodyta. Visi pakeisti Odoo SCSS kintamaisiais (`$o-view-background-color`, `$border-color`, `$primary`, `$warning`, `$o-gray-*`) |
+| 2026-10-08 | Žingsnis 8 ištestuotas, visi punktai praėjo. Visi plano žingsniai baigti — modulis `hr_shift_planning` 19.0.1.0.0 paruoštas naudojimui |

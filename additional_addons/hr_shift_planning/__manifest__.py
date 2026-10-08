@@ -23,6 +23,7 @@
             "hr_shift_planning/static/tests/**/*",
         ],
     },
+    "uninstall_hook": "uninstall_hook",
     "installable": True,
     "application": False,
 }

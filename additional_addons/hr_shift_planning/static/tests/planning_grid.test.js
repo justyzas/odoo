@@ -131,6 +131,27 @@ describe("display", () => {
         expect('.o_shift_day_header[data-day="2026-10-20"]').toHaveAttribute("title", "Test holiday");
     });
 
+    test("weeks are separated before each Monday", async () => {
+        await openGrid();
+
+        // October 2026: Mondays are the 5th, 12th, 19th and 26th
+        const mondays = ["2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"];
+        expect(".o_shift_day_header.o_shift_week_start").toHaveCount(4);
+        for (const date of mondays) {
+            expect(`.o_shift_day_header[data-day="${date}"]`).toHaveClass("o_shift_week_start");
+            expect(`.o_shift_cell.o_shift_week_start[data-day="${date}"]`).toHaveCount(2);
+            expect(`.o_shift_count.o_shift_week_start[data-day="${date}"]`).toHaveCount(2);
+        }
+    });
+
+    test("no week separator before the 1st, even on a Monday", async () => {
+        mockDate("2026-06-10 10:00:00"); // June 2026 starts on a Monday
+        await openGrid();
+
+        expect('.o_shift_day_header[data-day="2026-06-01"]').not.toHaveClass("o_shift_week_start");
+        expect('.o_shift_day_header[data-day="2026-06-08"]').toHaveClass("o_shift_week_start");
+    });
+
     test("clicking a cell highlights the cell, its employee and its day", async () => {
         await openGrid({ canEdit: false });
 

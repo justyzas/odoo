@@ -4,7 +4,7 @@
 |---|---|
 | **Modulis** | `hr_shift_planning` |
 | **Odoo versija** | 19.0 Community |
-| **Būsena** | Patvirtinta, paruošta kūrimui |
+| **Būsena** | Įgyvendinta (19.0.1.0.0, 2026-10-08) |
 | **Data** | 2026-10-07 |
 
 Prioritetai: **M** — privaloma, **S** — pageidautina, **C** — būtų gerai turėti.
@@ -65,6 +65,7 @@ Meniu matomas tik naudotojams, turintiems teises (FR-5).
 - Paspaudus langelį, pažymimas pats langelis, **darbuotojo vardas kairėje** ir **dienos antraštė viršuje**.
 - Užvedus pelę, eilutė ir stulpelis paryškinami silpnesniu tonu, kad būtų lengva sekti akimis.
 - Šiandienos stulpelis išskirtas. Savaitgaliai ir valstybinės šventės turi kitokį foną.
+- **[S]** Savaitės vizualiai atskirtos: prieš kiekvieną pirmadienį (savaitė prasideda pirmadienį) — ryškesnė vertikali linija per visą lentelės aukštį.
 
 #### FR-2.3 Darbo laiko priskyrimas
 
@@ -191,3 +192,34 @@ Sąrašo ir formos vaizdai šablonams kurti, redaguoti ir archyvuoti.
 2. **Lentelė:** Owl komponentas — struktūra, žymėjimas, teptukas, iššokantis langas, išsaugojimas (FR-2.1–FR-2.5).
 3. **Papildomos funkcijos:** DK patikrinimai, tempimas, klaviatūra, kopijavimas (FR-2.3 D–E, FR-2.6, FR-2.7).
 4. **Integracija (atskiras modulis `hr_shift_planning_attendance`):** buvimo būsena pagal pamainas, vartelių duomenys į `hr.attendance`, plano ir fakto palyginimas (žiniaraštis).
+
+## 5. Įgyvendinimo pastabos
+
+Kūrimo metu priimti sprendimai, kurie patikslina arba keičia aukščiau aprašytus reikalavimus. Smulki istorija — [kūrimo plano](hr_shift_planning_development_plan.md) pakeitimų žurnale.
+
+**Sąsaja**
+- Meniu: Employees → Working Hours → Planning / Templates. „Shifts (list)“ (paprastas pamainų sąrašas) matomas tik developer režime — problemų tyrimui ir eksportui.
+- Valdymo skydelis: kairėje Save / Discard / Copy ir įspėjimų mygtukas, viduryje teptukų juosta, dešinėje mėnesio naršymas. Paieška ir skyriaus filtras — lentelės kampe virš darbuotojų stulpelio. Stulpelis „Σ h“ prilipęs dešinėje, skaičių eilutės — apačioje.
+- Su teptuku langelis užpildomas atleidus pelę (vienas langelis arba tempiant pažymėtas stačiakampis).
+- Klaviatūra: po šablono raidės ar Delete žymėjimas pereina į kitą dieną; Enter atidaro šablonų sąrašą.
+- „Custom time“ laikas įvedamas tekstu 24 val. formatu (HH:MM, priimami ir trumpi įvedimai: „6“, „630“, „6.30“), nepriklausomai nuo naršyklės kalbos.
+- Žvaigždutė („R*“) rodoma, kai pamainos laikas skiriasi nuo **dabartinio** šablono laiko.
+- Savaitės atskirtos ryškesne linija prieš kiekvieną pirmadienį.
+
+**Kopijavimas (FR-2.7)**
+- Taikomas matomiems (pagal paiešką / skyriaus filtrą) darbuotojams; rezultatas — neišsaugoti pakeitimai.
+- „Previous week“ užpildo pažymėtos dienos savaitę (Pr–Sk) ankstesnės savaitės pamainomis, įskaitant tuščias dienas.
+- „Previous month“ kopijuoja pagal dienos numerį; dienos, kurių praėjusiame mėnesyje nėra, nekeičiamos.
+
+**DK įspėjimai (FR-2.6)**
+- Ribos — Employees → Configuration → Settings → „Shift Planning“; saugomos sistemos parametruose `hr_shift_planning.*` (išdiegiant modulį pašalinami).
+- Pamainos trukmė skaičiuojama be pertraukos; poilsis — nuo pamainos pabaigos iki kitos pradžios; 7 dienų riba — slenkančiu langu (diena + 6 ankstesnės). Reikšmė, lygi ribai, įspėjimo nesukelia.
+- Įspėjimus ir jų sąrašą mato ir Viewer.
+
+**Laiko juostos**
+- Pamainos laikas serveryje skaičiuojamas pagal darbuotojo laiko juostą, o lentelėje rodomas ir įvedamas pagal naršyklės laiko juostą. Abi turi sutapti (`Europe/Vilnius`).
+
+**Poveikis kitiems moduliams (NFR-4)**
+- Nauji modeliai: `hr.shift.template`, `hr.shift`. Kitų modulių metodai neperrašomi.
+- `res.config.settings`: pridėti trys neprivalomi laukai; Employees nustatymuose pridėtas naujas blokas (esami nekeičiami).
+- Darbuotojų sąrašas lentelei skaitomas per `hr.employee.public` (prieinamas visiems vidiniams naudotojams), todėl Viewer grupei nereikia HR teisių.
