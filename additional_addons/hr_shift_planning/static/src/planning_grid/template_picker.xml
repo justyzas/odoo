@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="hr_shift_planning.ShiftTemplatePicker">
+        <div class="o_shift_template_picker">
+            <div t-if="state.mode === 'list'" class="list-group list-group-flush">
+                <button t-foreach="props.templates" t-as="template" t-key="template.id"
+                        class="list-group-item list-group-item-action d-flex align-items-center gap-2 o_shift_picker_template"
+                        t-att-data-template-id="template.id"
+                        t-on-click="() => this.select(template.id)">
+                    <span class="o_shift_swatch" t-att-style="template.style" t-esc="template.code"/>
+                    <span class="flex-grow-1" t-esc="template.name"/>
+                    <span class="text-muted small" t-esc="template.timeLabel"/>
+                </button>
+                <button class="list-group-item list-group-item-action d-flex align-items-center gap-2 o_shift_picker_clear"
+                        t-on-click="() => this.select(false)">
+                    <span class="o_shift_swatch o_shift_swatch_clear"><i class="fa fa-eraser"/></span>
+                    <span>Clear</span>
+                </button>
+                <button class="list-group-item list-group-item-action d-flex align-items-center gap-2 o_shift_picker_custom"
+                        t-on-click="showCustom">
+                    <span class="o_shift_swatch o_shift_swatch_clear"><i class="fa fa-clock-o"/></span>
+                    <span>Custom time</span>
+                </button>
+            </div>
+
+            <div t-else="" class="o_shift_custom_form p-2" t-on-keydown="onKeydown">
+                <div class="mb-2">
+                    <label class="form-label small mb-1" for="o_shift_custom_template">Template</label>
+                    <select id="o_shift_custom_template" class="form-select form-select-sm o_shift_custom_template"
+                            t-on-change="onTemplateChange">
+                        <option value="" t-att-selected="!state.templateId">None</option>
+                        <option t-foreach="props.templates" t-as="template" t-key="template.id"
+                                t-att-value="template.id"
+                                t-att-selected="isTemplateSelected(template)"
+                                t-esc="template.code + ' - ' + template.name"/>
+                    </select>
+                </div>
+                <div class="d-flex gap-2 mb-2">
+                    <div>
+                        <label class="form-label small mb-1" for="o_shift_custom_from">Start</label>
+                        <input id="o_shift_custom_from" type="text" inputmode="numeric" maxlength="5"
+                               class="form-control form-control-sm o_shift_custom_time o_shift_custom_from"
+                               placeholder="HH:MM" t-model="state.from" t-on-blur="() => this.onTimeBlur('from')"/>
+                    </div>
+                    <div>
+                        <label class="form-label small mb-1" for="o_shift_custom_to">End</label>
+                        <input id="o_shift_custom_to" type="text" inputmode="numeric" maxlength="5"
+                               class="form-control form-control-sm o_shift_custom_time o_shift_custom_to"
+                               placeholder="HH:MM" t-model="state.to" t-on-blur="() => this.onTimeBlur('to')"/>
+                    </div>
+                    <div>
+                        <label class="form-label small mb-1" for="o_shift_custom_break">Break (min)</label>
+                        <input id="o_shift_custom_break" type="number" min="0" step="5"
+                               class="form-control form-control-sm o_shift_custom_break"
+                               t-model.number="state.breakMinutes"/>
+                    </div>
+                </div>
+                <div t-if="state.error" class="text-danger small mb-2 o_shift_custom_error" t-esc="state.error"/>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-primary btn-sm o_shift_custom_apply" t-on-click="applyCustom">Apply</button>
+                    <button class="btn btn-secondary btn-sm" t-on-click="() => this.props.close()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </t>
+
+</templates>

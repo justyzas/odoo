@@ -1,0 +1,448 @@
+# hr_shift_planning — kūrimo planas
+
+| | |
+|---|---|
+| **Specifikacija** | [hr_shift_planning_specs.md](hr_shift_planning_specs.md) |
+| **Produkto aprašymas** | [hr_shift_planning_product.md](hr_shift_planning_product.md) |
+| **Modulio vieta** | `additional_addons/hr_shift_planning/` |
+| **Paskutinis atnaujinimas** | 2026-10-08 |
+
+## Darbo eiga
+
+1. Claude įgyvendina vieną žingsnį ir atnaujina šį failą (būsena, pastabos, nukrypimai nuo plano).
+2. Claude pateikia testavimo sąrašą ir siūlomą commit message.
+3. Naudotojas ištestuoja. Jei randa klaidų, Claude jas taiso tame pačiame žingsnyje.
+4. Naudotojas padaro commit ir duoda signalą pereiti prie kito žingsnio.
+
+Kiekvienas žingsnis baigiasi veikiančia, įdiegiama modulio versija. Kūrimo metu sąsaja testuojama angliškai. Lietuviškas vertimas (`i18n/lt.po`) daromas žingsnyje 8.
+
+## Bendros komandos
+
+Modulio atnaujinimas (po kiekvieno žingsnio):
+
+```bash
+python odoo-bin -d <db> -u hr_shift_planning --stop-after-init
+```
+
+Python testai:
+
+```bash
+# MSYS_NO_PATHCONV=1: kitaip Git Bash „/hr_shift_planning“ paverčia Windows keliu ir paleidžiama 0 testų
+MSYS_NO_PATHCONV=1 python odoo-bin -c odoo.conf -d <db> -u hr_shift_planning --test-enable --test-tags /hr_shift_planning --stop-after-init
+```
+
+JS (Hoot) testai: paleidus serverį, naršyklėje atidaryti `/web/tests` ir filtruoti pagal `hr_shift_planning`.
+
+## Sąsajos pavadinimai
+
+Iki žingsnio 8 sąsaja yra angliška. Testavimo žingsniuose naudojami lietuviški pavadinimai atitinka šiuos angliškus:
+
+| Lietuviškai | Angliškai (sąsajoje) |
+|---|---|
+| Darbuotojai | Employees |
+| Darbo valandos | Working Hours |
+| Planavimas | Planning |
+| Šablonai | Templates |
+| Pamainos (sąrašas) | Shifts (list) |
+| Darbo valandos / Peržiūra | Working Hours / Viewer |
+| Darbo valandos / Planuotojas | Working Hours / Planner |
+| Išsaugoti / Atmesti | Save / Discard |
+| Likti (įspėjimo lange) | Stay |
+| Išvalyti | Clear |
+| Kitas laikas | Custom time |
+| Pritaikyti | Apply |
+| Paieška / Visi skyriai | Search employee... / All departments |
+| Šiandien | Today |
+| Archyvuoti (filtras) | Archived |
+| Baigiasi kitą dieną | Ends Next Day |
+| Pertrauka (min.) | Break (minutes) |
+| Trukmė | Duration (hours) |
+| Konfigūracija → Nustatymai | Configuration → Settings |
+
+## Būsena
+
+| # | Žingsnis | Specifikacija | Būsena |
+|---|---|---|---|
+| 0 | Pasiruošimas: `hr_employee_calendar_planning` pašalinimas | — | ✅ Baigtas |
+| 1 | Karkasas, teisės, šablonai | FR-1 (dalinai), FR-3, FR-5 | ✅ Baigtas |
+| 2 | Pamainos modelis | FR-4, FR-5 | ✅ Baigtas |
+| 3 | Lentelė: peržiūra ir naršymas | FR-1, FR-2.1, FR-2.2, FR-2.5 [M] | ✅ Baigtas |
+| 4 | Lentelė: redagavimas ir išsaugojimas | FR-2.3 A–B, FR-2.4, FR-5 | ✅ Baigtas |
+| 5 | Rankinis laikas, valandų suma, filtrai | FR-2.3 C, FR-2.5 [S] | ✅ Baigtas |
+| 6 | DK įspėjimai | FR-2.6 | ✅ Baigtas |
+| 7 | Greitinimo funkcijos | FR-2.3 D–E, FR-2.5 [C], FR-2.7 | ✅ Baigtas |
+| 8 | Savaičių atskyrimas, vertimai ir galutinis patikrinimas | NFR-1–NFR-9, FR-2.2 | ✅ Baigtas |
+
+Būsenos: ⬜ Neprasidėjęs · 🔄 Vykdomas · 🧪 Laukia testavimo · ✅ Baigtas
+
+---
+
+## Žingsnis 0 — Pasiruošimas (pasirenkamas)
+
+**Tikslas:** pašalinti `hr_employee_calendar_planning`, nes jis nereikalingas ir prideda sudėtingumo (automatiškai generuojami kalendoriai, draudimas sukurti darbuotoją be grafiko).
+
+**Darbai:**
+- Naudotojas išdiegia modulį per Apps → `hr_employee_calendar_planning` → Uninstall.
+- Claude pašalina `additional_addons/hr_employee_calendar_planning/` iš repozitorijos.
+
+**Testavimas:**
+- [ ] 0.1. Apps sąraše modulis nebeįdiegtas.
+- [ ] 0.2. Darbuotojo kortelėje vėl matomas standartinis laukas „Working Hours“, nebėra „Calendar planning“ lentelės.
+- [ ] 0.3. Galima sukurti naują darbuotoją, nenurodžius grafiko planavimo eilučių.
+- [ ] 0.4. Esamų darbuotojų „Working Hours“ reikšmė nepasikeitė į tuščią. Jei pasikeitė, priskirti įmonės grafiką.
+
+**Commit message:** `remove hr_employee_calendar_planning (replaced by hr_shift_planning)`
+
+---
+
+## Žingsnis 1 — Karkasas, teisės, šablonai
+
+**Tikslas:** įdiegiamas modulis su teisių grupėmis, meniu ir pilnai veikiančiu šablonų valdymu.
+
+**Apimtis:** FR-1 (meniu „Darbo valandos“ → „Šablonai“), FR-3, FR-5 (grupės ir modelio teisės šablonams).
+
+**Darbai:**
+- `__manifest__.py` (priklauso tik nuo `hr`), `__init__.py`.
+- Teisių grupės: „Darbo valandos / Peržiūra“ ir „Darbo valandos / Planuotojas“ (Planuotojas paveldi Peržiūrą). Administratoriui priskiriamas Planuotojas.
+- Modelis `hr.shift.template`: pavadinimas, kodas, spalva, pradžia, pabaiga, pertrauka, trukmė (apskaičiuojama), aktyvus, įmonė, eiliškumas.
+- Ribojimai: kodas 1–3 simboliai, unikalus įmonėje.
+- Naktinės pamainos trukmė skaičiuojama teisingai (pabaiga ≤ pradžia reiškia kitą dieną).
+- Sąrašo vaizdas (eiliškumas tempiant, spalva), formos vaizdas, paieška su filtru „Archyvuoti“.
+- Meniu: Darbuotojai → Darbo valandos → Šablonai.
+- `ir.rule`: tik savo įmonės šablonai.
+- Python testai: trukmės skaičiavimas (dieninė, naktinė, su pertrauka), kodo unikalumas, teisės.
+
+**Testavimas:**
+- [ ] 1.1. Modulis įdiegiamas per Apps be klaidų.
+- [ ] 1.2. Meniu Darbuotojai → Darbo valandos → Šablonai matomas administratoriui.
+- [ ] 1.3. Sukurti šablonus: Rytinė (R, 06:00–14:00, 30 min. pertrauka), Vakarinė (V, 14:00–22:00, 30 min.), Naktinė (N, 22:00–06:00, 30 min.). Trukmė (Duration) rodo 07:30 visiems trims.
+- [ ] 1.4. Naktinei pažymėta „Baigiasi kitą dieną“ (Ends Next Day), rytinei ir vakarinei — ne.
+- [ ] 1.5. Pakeitus pabaigą, trukmė persiskaičiuoja iš karto.
+- [ ] 1.6. Bandant sukurti antrą šabloną su kodu „R“, rodoma klaida.
+- [ ] 1.7. Kodo lauke negalima įvesti daugiau nei 3 simbolių.
+- [ ] 1.8. Pradžia 25:00 arba pertrauka, ilgesnė už pamainą, neleidžiama.
+- [ ] 1.9. Sąraše šablonų tvarką galima keisti tempiant, spalva matoma.
+- [ ] 1.10. Archyvuotas šablonas dingsta iš sąrašo ir matomas su filtru „Archyvuoti“.
+- [ ] 1.11. Sukurti naudotoją su grupe „Darbo valandos / Peržiūra“: mato šablonus, bet negali jų kurti ar redaguoti.
+- [ ] 1.12. Naudotojas be grupių nemato meniu „Darbo valandos“.
+- [ ] 1.13. Python testai praeina.
+
+**Commit message:** `hr_shift_planning: module skeleton, security groups and shift templates`
+
+---
+
+## Žingsnis 2 — Pamainos modelis
+
+**Tikslas:** pamainų duomenys saugomi ir validuojami. Kol nėra lentelės, pamainas galima peržiūrėti ir redaguoti laikinu sąrašo vaizdu.
+
+**Apimtis:** FR-4, FR-5 (teisės pamainoms).
+
+**Darbai:**
+- Modelis `hr.shift`: darbuotojas, data, šablonas (neprivalomas), pradžia ir pabaiga (UTC), pertrauka, trukmė, `is_custom`, įmonė.
+- Pradžia ir pabaiga apskaičiuojamos iš šablono ir datos pagal darbuotojo laiko juostą. Naktinės pamainos pabaiga tenka kitai dienai.
+- DB ribojimas: viena pamaina vienam darbuotojui per dieną.
+- Šablono, naudojamo pamainose, ištrinti negalima (`ondelete="restrict"`).
+- Pakeitus šablono laiką, esamos pamainos nesikeičia.
+- Laikinas meniu „Darbo valandos → Pamainos (sąrašas)“: redaguojamas sąrašas, grupavimas pagal darbuotoją ir datą. Žingsnyje 3 jį pakeis lentelė.
+- `ir.rule`: tik savo įmonės pamainos. Peržiūros grupė tik skaito.
+- Python testai: naktinė pamaina, laiko juosta, ribojimas, `is_custom`, šablono keitimas, teisės.
+
+**Pastaba dėl laiko juostų:** pamainos laikas skaičiuojamas pagal **darbuotojo** laiko juostą (darbuotojo kortelė → Work Information → Timezone), o sąsajoje rodomas pagal **naršyklės** laiko juostą. Testuojant abi turi būti `Europe/Vilnius`, kitaip rodomi laikai pasislinks.
+
+**Testavimas:**
+- [ ] 2.1. Atnaujinus modulį, meniu atsiranda „Pamainos (sąrašas)“.
+- [ ] 2.2. Sąraše pridėti eilutę: darbuotojas, data 10-15, šablonas „R“. Start ir End užsipildo automatiškai: 10-15 06:00 ir 10-15 14:00, Duration 07:30.
+- [ ] 2.3. Pamaina su šablonu „N“ datai 10-16: Start 10-16 22:00, End **10-17** 06:00.
+- [ ] 2.4. Antra pamaina tam pačiam darbuotojui tą pačią dieną neleidžiama, rodoma klaida.
+- [ ] 2.5. Pakeitus pamainos „R“ pabaigą į 12:00, pažymimas „Custom Time“, Duration 05:30.
+- [ ] 2.6. Pamaina be šablono (Start ir End įvesti rankiniu būdu) išsaugoma, „Custom Time“ nepažymėtas.
+- [ ] 2.7. Pamaina, kurios Start ne tą dieną, kuri nurodyta Date, neleidžiama.
+- [ ] 2.8. End ankstesnis už Start neleidžiamas.
+- [ ] 2.9. Pakeitus šablono „R“ pradžią į 07:00, jau sukurta pamaina lieka 06:00. Grąžinti šabloną į 06:00.
+- [ ] 2.10. Bandant ištrinti naudojamą šabloną, rodoma klaida. Archyvuoti galima.
+- [ ] 2.11. Sąrašo apačioje rodoma Duration suma. Grupavimas pagal Employee ir Date veikia.
+- [ ] 2.12. Peržiūros grupės naudotojas mato pamainas, bet negali jų keisti.
+- [ ] 2.13. Darbuotojų modulis ir darbuotojo kortelė veikia kaip anksčiau (NFR-4).
+- [ ] 2.14. Python testai praeina (nebūtina).
+
+**Commit message:** `hr_shift_planning: shift model with constraints and access rules`
+
+---
+
+## Žingsnis 3 — Lentelė: peržiūra ir naršymas
+
+**Tikslas:** pagrindinė lentelė rodo visų darbuotojų mėnesio pamainas. Redaguoti dar negalima.
+
+**Apimtis:** FR-1 (meniu „Planavimas“), FR-2.1, FR-2.2, FR-2.5 [M].
+
+**Darbai:**
+- Serverio metodas, kuris viena užklausa grąžina mėnesio duomenis: darbuotojus, pamainas, šablonus, valstybines šventes (NFR-5).
+- Owl kliento veiksmas (client action): darbuotojų stulpelis kairėje, dienų eilutė viršuje, langeliai su kodu, valandomis ir spalva.
+- Sticky darbuotojų stulpelis ir dienų eilutė, langelio aukštis ≥ 60 px (NFR-3).
+- Žymėjimas: paspaustas langelis, jo darbuotojas ir diena. Užvedus pelę paryškinama eilutė ir stulpelis.
+- Šiandienos, savaitgalių ir švenčių išskyrimas.
+- Mėnesio naršymas ◀ / ▶ / „Šiandien“.
+- Meniu: Darbuotojai → Darbo valandos → Planavimas (pirmas punktas).
+- Hoot testai: atvaizdavimas, žymėjimas, naršymas.
+
+**Pastaba:** kol lentelės negalima redaguoti (žingsnis 4), testinės pamainos kuriamos per „Shifts (list)“. Šis meniu paliekamas iki žingsnio 4.
+
+**Testavimas:**
+- [ ] 3.1. Employees → Working Hours → Planning atidaro lentelę per 3 paspaudimus (NFR-1). „Planning“ yra pirmas meniu punktas.
+- [ ] 3.2. Rodomi visi aktyvūs įmonės darbuotojai, surūšiuoti pagal vardą, po vardu pareigos (arba skyrius). Archyvuoti darbuotojai nerodomi.
+- [ ] 3.3. Viršuje matomos visos einamojo mėnesio dienos: dienos numeris ir savaitės diena.
+- [ ] 3.4. Per „Shifts (list)“ sukurtos pamainos rodomos teisingose vietose: šablono kodas, valandos (pvz. „7.5h“), šablono spalvos fonas.
+- [ ] 3.5. Pamaina su pakeistu laiku rodoma su žvaigždute („R*“), pamaina be šablono — pilka su laiku („06-12“).
+- [ ] 3.6. Užvedus pelę ant pamainos, rodomas šablono pavadinimas, laikas ir pertrauka.
+- [ ] 3.7. Paspaudus langelį, pažymimas langelis (mėlynas rėmelis), darbuotojo vardas kairėje ir dienos antraštė viršuje. Paspaudus kitą, žymėjimas persikelia.
+- [ ] 3.8. Užvedus pelę, paryškinama eilutė ir stulpelis.
+- [ ] 3.9. Šiandienos antraštė mėlyna, savaitgaliai pilkesni.
+- [ ] 3.10. Valstybinė šventė (jei įvesta įmonės darbo grafike → Public Holidays) pažymėta gelsva spalva, užvedus pelę ant antraštės rodomas pavadinimas.
+- [ ] 3.11. ◀ / ▶ perjungia mėnesį, pavadinimas viršuje keičiasi, „Today“ grąžina į einamąjį.
+- [ ] 3.12. Slenkant žemyn ir į šoną, vardai ir dienos lieka matomi.
+- [ ] 3.13. Langelių aukštis ≥ 60 px (naršyklės DevTools).
+- [ ] 3.14. Viewer naudotojas mato lentelę.
+- [ ] 3.15. Hoot testai (nebūtina): `/web/tests?filter=hr_shift_planning`. Python testai (nebūtina).
+
+**Commit message:** `hr_shift_planning: read-only monthly planning grid`
+
+---
+
+## Žingsnis 4 — Lentelė: redagavimas ir išsaugojimas
+
+**Tikslas:** pamainos priskiriamas lentelėje ≤ 2 paspaudimais ir išsaugomos vienu kartu.
+
+**Apimtis:** FR-2.3 A–B, FR-2.4, FR-5 (sąsaja pagal grupę).
+
+**Darbai:**
+- Teptukų juosta (aktyvūs šablonai pagal eiliškumą) ir mygtukas „Išvalyti“.
+- Teptukas: pasirinktas šablonas lieka aktyvus, kol nepasirenkamas kitas arba nepaspaudžiamas dar kartą.
+- Iššokantis langas, kai teptukas nepasirinktas.
+- Neišsaugoti pakeitimai laikomi naršyklėje ir pažymimi langelyje.
+- „Išsaugoti“ (viena serverio užklausa) ir „Atšaukti“.
+- Įspėjimas išeinant ar keičiant mėnesį su neišsaugotais pakeitimais.
+- Peržiūros grupei teptukų juosta ir redagavimas paslėpti. Serveris taip pat atmeta jų pakeitimus.
+- Hoot testai: teptukas, iššokantis langas, išsaugojimas, atšaukimas. Python testas: išsaugojimo metodas ir teisės.
+
+**Išdėstymas:** teptukų juosta yra valdymo skydelio viduryje, mygtukai „Save“ / „Discard“ — kairėje (kaip Odoo formose), mėnesio naršymas — dešinėje. Taip visi valdikliai lieka matomi slenkant lentelę.
+
+**Testavimas:**
+- [ ] 4.1. Planner naudotojui viršuje matoma teptukų juosta: aktyvūs šablonai (kodas, šablono spalva) eiliškumo tvarka ir „Clear“. Archyvuoti šablonai nerodomi.
+- [ ] 4.2. Paspaudus teptuką „R“, jis pažymimas rėmeliu. Paspaudus tuščią langelį, jame atsiranda „R“ (2 paspaudimai, NFR-2).
+- [ ] 4.3. Toliau spaudžiant kitus langelius, kiekvienas užpildomas 1 paspaudimu. Teptukas lieka pasirinktas.
+- [ ] 4.4. Paspaudus aktyvų teptuką dar kartą, jis atžymimas.
+- [ ] 4.5. Be teptuko paspaudus langelį, atsidaro šablonų sąrašas (kodas, pavadinimas, laikas) ir „Clear“. Pasirinkus šabloną, jis priskiriamas ir sąrašas užsidaro. Paspaudus šalia arba Esc, sąrašas užsidaro be pakeitimų.
+- [ ] 4.6. Pakeisti langeliai pažymėti oranžiniu taškeliu kampe. Mygtukas rodo pakeitimų skaičių, pvz. „Save (3)“.
+- [ ] 4.7. „Clear“ teptukas pašalina pamainą iš langelio.
+- [ ] 4.8. Grąžinus langeliui pradinę reikšmę (pvz. „Clear“, o tada vėl tas pats šablonas), taškelis dingsta ir pakeitimas nebeskaičiuojamas.
+- [ ] 4.9. Langelyje, kuriame jau yra pamaina, pritaikius kitą šabloną, ji pakeičiama (ne dubliuojama).
+- [ ] 4.10. Pamainai su pakeistu laiku („R*“) pritaikius tą patį teptuką „R“ ir išsaugojus, laikas grąžinamas į šablono laiką, žvaigždutė dingsta.
+- [ ] 4.11. „Save“: taškeliai dingsta, perkrovus puslapį pakeitimai išlieka.
+- [ ] 4.12. „Discard“: visi neišsaugoti pakeitimai atmetami.
+- [ ] 4.13. Su neišsaugotais pakeitimais keičiant mėnesį rodomas langas: „Stay“ palieka mėnesį ir pakeitimus, „Discard“ juos atmeta ir perjungia mėnesį.
+- [ ] 4.14. Su neišsaugotais pakeitimais einant į kitą meniu, rodomas tas pats langas.
+- [ ] 4.15. Su neišsaugotais pakeitimais uždarant / perkraunant naršyklės skirtuką, naršyklė įspėja.
+- [ ] 4.16. Viewer naudotojas mato lentelę, bet teptukų juostos ir „Save“ / „Discard“ nėra. Paspaudus langelį, jis tik pažymimas.
+- [ ] 4.17. „Shifts (list)“ meniu nebematomas įprastame režime, bet matomas developer režime (`?debug=1`).
+- [ ] 4.18. Hoot ir Python testai praeina (nebūtina).
+
+**Commit message:** `hr_shift_planning: brush and popover editing with batch save`
+
+---
+
+## Žingsnis 5 — Rankinis laikas, valandų suma, filtrai
+
+**Tikslas:** galima nurodyti nestandartinį laiką, matyti mėnesio valandas ir filtruoti darbuotojus.
+
+**Apimtis:** FR-2.3 C, FR-2.5 [S].
+
+**Darbai:**
+- Iššokančiame lange mygtukas „Kitas laikas“ su laukais „Pradžia“, „Pabaiga“, „Pertrauka“.
+- Rankinis laikas su šablonu rodomas su žvaigždute („R\*“), be šablono — pilkas langelis su laiku („06–12“). Užvedus pelę rodomas tikslus laikas.
+- Teptukas ant rankinio langelio perrašo laiką šablono laiku.
+- Stulpelis „Σ val.“ dešinėje, atsinaujina iš karto keičiant (dar neišsaugojus).
+- Filtras pagal skyrių ir paieška pagal vardą.
+- Hoot testai.
+
+**Išdėstymas:** paieška ir skyriaus filtras yra lentelės kampe virš darbuotojų stulpelio, todėl lieka matomi slenkant. Stulpelis „Σ h“ prilipęs prie dešinio krašto.
+
+**Testavimas:**
+- [ ] 5.1. Be teptuko paspaudus langelį, sąraše yra punktas „Custom time“. Jį paspaudus, atsiranda forma: Template, Start, End, Break (min). Iš viso 2 paspaudimai.
+- [ ] 5.2. Forma užpildyta pagal langelio dabartinę reikšmę (pvz. „R“ langelyje: R, 06:00, 14:00, 30). Tuščiame langelyje: be šablono, 08:00–16:00, 0.
+- [ ] 5.3. Formoje pasirinkus šabloną, laikai ir pertrauka užsipildo pagal šabloną.
+- [ ] 5.4. Šablonas „R“ su laiku 06:00–12:00 → langelyje „R*“, valandos be pertraukos (5.5h). Užvedus pelę rodoma 06:00 - 12:00.
+- [ ] 5.5. Laikas be šablono (Template: None) rodomas pilkame langelyje kaip „06-12“.
+- [ ] 5.6. Naktinis rankinis laikas (pvz. 20:00–02:30) priimamas, valandos skaičiuojamos per vidurnaktį (6.5h).
+- [ ] 5.7. Pertrauka, ilgesnė už pamainą, neleidžiama: formoje rodoma klaida, langelis nesikeičia. Enter = Apply, Cancel / Esc uždaro be pakeitimų.
+- [ ] 5.8. Start / End laukai visada 24 val. formato (be AM/PM). Priimami trumpi įvedimai: „6“ → 06:00, „630“ → 06:30, „6.30“ → 06:30, „1400“ → 14:00, „24:00“ → 00:00. Išėjus iš lauko, reikšmė perrašoma į HH:MM. Neteisingas laikas („25:00“) neleidžiamas, rodoma klaida.
+- [ ] 5.9. Išsaugojus ir perkrovus puslapį, rankiniai laikai išlieka. „Shifts (list)“ (debug režime) rodo teisingus Start / End ir „Custom Time“.
+- [ ] 5.10. Teptukas „R“ ant „R*“ langelio grąžina šablono laiką, žvaigždutė dingsta.
+- [ ] 5.11. Stulpelis „Σ h“ dešinėje rodo kiekvieno darbuotojo mėnesio valandas (be pertraukų, su rankiniais laikais).
+- [ ] 5.12. Suma atsinaujina iš karto keičiant langelius, dar neišsaugojus.
+- [ ] 5.13. Paieška pagal vardo dalį veikia nepaisant didžiųjų raidžių ir lietuviškų raidžių („ciurl“ randa „Čiurlionis“).
+- [ ] 5.14. Skyriaus filtras rodo tik to skyriaus darbuotojus. „All departments“ grąžina visus.
+- [ ] 5.15. Hoot ir Python testai praeina (nebūtina).
+
+**Commit message:** `hr_shift_planning: custom shift times, monthly totals and filters`
+
+---
+
+## Žingsnis 6 — DK įspėjimai
+
+**Tikslas:** lentelė įspėja apie darbo kodekso pažeidimus, bet išsaugoti netrukdo.
+
+**Apimtis:** FR-2.6.
+
+**Darbai:**
+- Nustatymai (Darbuotojai → Konfigūracija → Nustatymai): minimalus poilsis tarp pamainų (11 val.), maksimali pamaina (12 val.), maksimalios valandos per 7 dienas (48 val.).
+- Patikrinimai skaičiuojami naršyklėje iš karto keičiant, įskaitant pamainas, kurios patenka į gretimą mėnesį (paskutinė praėjusio mėnesio diena, pirmos kito mėnesio dienos).
+- Geltonas langelio rėmelis su paaiškinimu užvedus pelę.
+- Įspėjimų skaičius prie „Išsaugoti“ ir sąrašas jį paspaudus.
+- Python testai (ribų skaičiavimas), Hoot testai.
+
+**Kaip skaičiuojama:**
+- *Poilsis:* nuo vienos pamainos pabaigos iki kitos pradžios (pertraukos neįskaitomos į poilsį). Pažymimi abu langeliai.
+- *Pamainos trukmė:* darbo valandos be pertraukos.
+- *7 dienos:* slenkantis langas — kiekvienai mėnesio dienai sumuojamos tos dienos ir 6 ankstesnių dienų valandos. Pažymima diena, kurią riba viršijama.
+- Ribos su ta pačia reikšme (pvz. lygiai 12 val.) įspėjimo nesukelia.
+
+**Testavimas:**
+- [ ] 6.1. Employees → Configuration → Settings: skyriuje „Shift Planning“ matomos trys ribos su numatytomis reikšmėmis 11:00, 12:00 ir 48.
+- [ ] 6.2. Naktinė pamaina (22:00–06:00), o kitą dieną rytinė (06:00): abu langeliai su geltonu rėmeliu. Užvedus pelę: „Only 0 h of rest between shifts (minimum 11 h)“.
+- [ ] 6.3. Rankinė pamaina 06:00–20:00 be pertraukos (14 val.): „14 h shift (maximum 12 h)“.
+- [ ] 6.4. 7 dienos iš eilės su „R“ (7 × 7.5 = 52.5 val.): pažymėta tik 7-oji diena, „52.5 h in the 7 days up to this day (maximum 48 h)“.
+- [ ] 6.5. Įspėjimai atsiranda ir dingsta iš karto keičiant langelius, dar neišsaugojus.
+- [ ] 6.6. Šalia „Save“ / „Discard“ rodomas geltonas mygtukas su įspėjimų skaičiumi (⚠ 3). Kai įspėjimų nėra, mygtuko nėra.
+- [ ] 6.7. Paspaudus mygtuką, matomas sąrašas: darbuotojas, data, įspėjimas. Paspaudus įrašą, pažymimas atitinkamas langelis ir lentelė paslenka iki jo (jei darbuotojas paslėptas filtru, filtras išvalomas).
+- [ ] 6.8. Su įspėjimais išsaugoti galima, įspėjimai išlieka ir perkrovus puslapį.
+- [ ] 6.9. Nustatymuose pakeitus ribą (pvz. 12 → 7 val.), perkrovus lentelę įspėjimai persiskaičiuoja („R“ 7.5 val. pamainos pažymimos). Grąžinti 12.
+- [ ] 6.10. Naktinė pamaina paskutinę mėnesio dieną ir rytinė pirmą kito mėnesio dieną (suplanuota kitame mėnesyje): paskutinės dienos langelyje rodomas įspėjimas.
+- [ ] 6.11. 7 dienų langas apima ir praėjusio mėnesio pabaigą: pvz. 4 pamainos praėjusio mėnesio gale + 3 šio mėnesio pradžioje → įspėjimas 3-ią šio mėnesio dieną.
+- [ ] 6.12. Viewer naudotojas taip pat mato įspėjimus ir jų sąrašą.
+- [ ] 6.13. Hoot ir Python testai praeina (nebūtina).
+
+**Commit message:** `hr_shift_planning: labour code warnings in planning grid`
+
+---
+
+## Žingsnis 7 — Greitinimo funkcijos
+
+**Tikslas:** didelius kiekius pamainų galima suplanuoti greičiau.
+
+**Apimtis:** FR-2.3 D–E, FR-2.5 [C], FR-2.7.
+
+**Darbai:**
+- Tempimas pele: teptukas pritaikomas pažymėtam stačiakampiui (dienos × darbuotojai).
+- Klaviatūra: rodyklės, šablono kodo raidė, Delete.
+- Apatinė eilutė: kiek žmonių kiekvienai pamainai kiekvieną dieną.
+- „Kopijuoti iš praėjusio mėnesio / savaitės“ pasirinktiems darbuotojams (į neišsaugotus pakeitimus, kad būtų galima peržiūrėti prieš išsaugant).
+- Hoot testai.
+
+**Kaip veikia:**
+- *Tempimas:* su pasirinktu teptuku nuspaudus pelę ant langelio ir tempiant, žymimas stačiakampis (mėlynas atspalvis); atleidus pelę teptukas pritaikomas visiems jo langeliams. Paprastas paspaudimas — vienas langelis, kaip anksčiau.
+- *Klaviatūra* (kai yra pažymėtas langelis, ir fokusas ne įvesties lauke): rodyklės — judėti; raidė — šablonas, kurio kodas prasideda ta raide (pakartotinai spaudžiant ta pačia raide — kitas tokį kodą turintis šablonas); Delete / Backspace — išvalyti; po raidės ar Delete žymėjimas pereina į kitą dieną (savaitę galima „surašyti“: R R R R R); Enter — atidaro šablonų sąrašą. Viewer gali tik judėti.
+- *Kopijavimas* (mygtukas „Copy“ šalia Save / Discard, tik Planner): taikoma **matomiems** (pagal paiešką / skyriaus filtrą) darbuotojams, rezultatas — neišsaugoti pakeitimai.
+  - „Previous week → week of the selected day“: savaitė (Pr–Sk), kurioje yra pažymėtas langelis, užpildoma prieš tai buvusios savaitės pamainomis (ir tuščiomis dienomis). Jei langelis nepažymėtas — pranešimas.
+  - „Previous month → this month“: kopijuojama pagal dienos numerį (1-a → 1-a). Dienos, kurių praėjusiame mėnesyje nėra (pvz. 31-a), nekeičiamos.
+- *Apatinės eilutės:* kiekvienam aktyviam šablonui (ir „Other“ — rankiniam laikui be šablono) rodoma, kiek matomų darbuotojų tą dieną dirba ta pamaina. Eilutės prilipusios prie apačios.
+
+**Testavimas:**
+- [ ] 7.1. Su teptuku „VAK“ tempiant per 5 dienas ir 3 darbuotojus: tempiant stačiakampis paryškinamas, atleidus užpildomi 15 langelių, „Save (15)“.
+- [ ] 7.2. Paprastas paspaudimas su teptuku vis dar užpildo vieną langelį.
+- [ ] 7.3. Pažymėjus langelį (be teptuko paspaudus ir Esc uždarius sąrašą, arba po teptuko paspaudimo), rodyklės juda tarp langelių, lentelė paslenka, kad pažymėtas langelis būtų matomas.
+- [ ] 7.4. Paspaudus „N“, langelyje atsiranda „NAK“, žymėjimas pereina į kitą dieną. „R R R R R“ surašo 5 dienas.
+- [ ] 7.5. Delete / Backspace išvalo langelį ir pereina į kitą dieną. Enter atidaro šablonų sąrašą.
+- [ ] 7.6. Rašant paieškos lauke ar „Custom time“ formoje, raidės ir rodyklės lentelės nekeičia.
+- [ ] 7.7. Apatinėse eilutėse rodomas kiekvienos pamainos darbuotojų skaičius kiekvieną dieną. Skaičiai atsinaujina iš karto keičiant ir priklauso nuo skyriaus filtro.
+- [ ] 7.8. Copy → „Previous week → week of the selected day“: patvirtinus, pažymėto langelio savaitė užpildoma ankstesnės savaitės pamainomis (neišsaugoti pakeitimai). „Discard“ juos atmeta.
+- [ ] 7.9. Be pažymėto langelio „Previous week“ rodo pranešimą ir nieko nekeičia.
+- [ ] 7.10. Pirmos mėnesio savaitės kopijavimas paima pamainas iš praėjusio mėnesio pabaigos.
+- [ ] 7.11. Copy → „Previous month → this month“: mėnesis užpildomas pagal dienos numerį. Pvz. spalį: spalio 31-a nekeičiama, nes rugsėjis turi 30 dienų.
+- [ ] 7.12. Su skyriaus filtru kopijavimas paliečia tik to skyriaus darbuotojus.
+- [ ] 7.13. Viewer nemato „Copy“ mygtuko.
+- [ ] 7.14. Hoot ir Python testai praeina (nebūtina).
+
+**Commit message:** `hr_shift_planning: drag selection, keyboard shortcuts and copy`
+
+---
+
+## Žingsnis 8 — Vertimai ir galutinis patikrinimas
+
+**Tikslas:** išversti sąsają į lietuvių kalbą, vizualiai atskirti savaites, patvirtinti, kad visi nefunkciniai reikalavimai įvykdyti, ir paruošti modulį naudojimui.
+
+**Apimtis:** NFR-1–NFR-9, FR-2.2 (savaičių atskyrimas).
+
+Žingsnis vykdomas dviem dalimis, nes tikslų tekstų šabloną (`.pot`) sugeneruoja pats Odoo iš įdiegto modulio.
+
+**8A — Claude:**
+- Savaičių atskyrimas lentelėje: prieš kiekvieną pirmadienį ryškesnė vertikali linija per antraštę, darbuotojų eilutes ir apatines eilutes (savaitė prasideda pirmadienį, nepriklausomai nuo kalbos nustatymų).
+- Įspėjimų skaičiavimo talpykla (cache): vieną kartą per pakeitimą, ne kelis kartus per atvaizdavimą (NFR-5).
+- `uninstall_hook`: išdiegiant pašalinami `hr_shift_planning.*` sistemos parametrai.
+- Greitaveikos testinių duomenų scenarijus: [scripts/hr_shift_planning_perf_data.py](scripts/hr_shift_planning_perf_data.py) (200 darbuotojų „Perf Test“ skyriuje su mėnesio pamainomis; tas pats scenarijus juos ir ištrina).
+- NFR-4 peržiūra ir specifikacijos skyrius „5. Įgyvendinimo pastabos“.
+
+**8B — naudotojas, tada Claude:**
+- Naudotojas atnaujina modulį ir sugeneruoja tekstų šabloną:
+  ```bash
+  python odoo-bin i18n export -c odoo.conf -d <db> hr_shift_planning
+  ```
+  (sukuria `additional_addons/hr_shift_planning/i18n/hr_shift_planning.pot`).
+- Claude iš jo paruošia `i18n/lt.po`.
+- Naudotojas įdiegia lietuvių kalbą (jei dar neįdiegta: `python odoo-bin i18n loadlang -c odoo.conf -d <db> -l lt`) ir atnaujina modulį.
+
+**Neatlikta / naudotojo pusėje:**
+- `ruff check` — ruff šioje aplinkoje neįdiegtas.
+- `hr` testai su įdiegtu moduliu (NFR-4) — paleidžia naudotojas (nebūtina).
+
+**Testavimas:**
+- [ ] 8.1. Lentelėje prieš kiekvieną pirmadienį matoma ryškesnė vertikali linija per visą lentelės aukštį (antraštė, darbuotojai, apatinės eilutės). Kitos dienų ribos lieka plonos.
+- [ ] 8.2. Mėnesiui prasidedant pirmadienį, linija prieš 1-ą dieną neperdengia darbuotojų stulpelio krašto (atrodo tvarkingai). Linijos išlieka slenkant, žymint ir tempiant.
+- [ ] 8.3. Su 200 darbuotojų mėnuo įkeliamas per ≤ 2 s (NFR-5). Testiniai duomenys: `python odoo-bin shell -c odoo.conf -d <db> < documents/scripts/hr_shift_planning_perf_data.py`. Laiką galima matyti naršyklės DevTools → Network → `get_planning_data`.
+- [ ] 8.4. Su 200 darbuotojų langelio paspaudimas, teptukas, tempimas ir klaviatūra veikia be juntamo vėlavimo. Po testo duomenys ištrinami: `PERF_MODE=delete python odoo-bin shell -c odoo.conf -d <db> < documents/scripts/hr_shift_planning_perf_data.py`.
+- [ ] 8.5. Lentelė veikia Chrome, Edge ir Firefox; esant < 1280 px pločiui slenkama horizontaliai (NFR-7).
+- [ ] 8.6. Perjungus naudotojo kalbą į lietuvių, visa modulio sąsaja (meniu, šablonai, pamainos, lentelė, įspėjimai, klaidų pranešimai) rodoma lietuviškai, be angliškų likučių (NFR-6).
+- [ ] 8.7. Angliška sąsaja veikia kaip anksčiau.
+- [ ] 8.8. `hr` modulio testai praeina su įdiegtu `hr_shift_planning` (NFR-4).
+- [ ] 8.9. Išdiegus modulį (galima bandyti DB kopijoje), Darbuotojų modulis veikia kaip anksčiau, Employees nustatymuose nebėra „Shift Planning“ bloko.
+- [ ] 8.10. Visi Python ir Hoot testai praeina (NFR-9).
+- [ ] 8.11. Spalvų ir prilipusių stulpelių patikrinimas (po `--bs-*` pataisos): priartinus / slenkant į šonus, Σ h ir darbuotojų stulpeliai bei antraštė turi baltą foną ir nepersidengia su langeliais; savaitgaliai pilkesni; šiandienos antraštė spalvota; šventės gelsvos; pažymėtas langelis, darbuotojas ir diena paryškinti; aktyvus teptukas su rėmeliu; tempiamas stačiakampis matomas; įspėjimo rėmelis geltonas; neišsaugoto pakeitimo taškelis oranžinis; apatinės eilutės su pilku fonu.
+
+**Commit message:** `hr_shift_planning: Lithuanian translation, performance check and final review`
+
+---
+
+## Ateities darbai (ne šio plano apimtis)
+
+- `hr_shift_planning_attendance`: buvimo būsena (raudona / žalia) pagal pamainas, vartelių duomenys į `hr.attendance`, plano ir fakto palyginimas, lankomumo žiniaraštis.
+
+## Pakeitimų žurnalas
+
+| Data | Pakeitimas |
+|---|---|
+| 2026-10-07 | Sukurtas planas |
+| 2026-10-07 | Lietuviškas vertimas perkeltas į žingsnį 8; kūrimo metu testuojama angliškai |
+| 2026-10-07 | Žingsnis 0: modulio aplankas pašalintas. Žingsnis 1 įgyvendintas; papildomai pridėtas laukas „Baigiasi kitą dieną“ (`is_overnight`). Testuojama development DB |
+| 2026-10-07 | Žingsniai 0 ir 1 ištestuoti rankiniu būdu, visi punktai praėjo. Python testai nepaleisti |
+| 2026-10-07 | Žingsnis 2 įgyvendintas. Papildomai: patikrinimas, kad pamaina prasideda nurodytą dieną; filtrai „Custom Time“ ir „Without Template“. Pakeitus šabloną, esamų pamainų `is_custom` nepersiskaičiuoja |
+| 2026-10-07 | Žingsnio 2 pataisos: naujoje sąrašo eilutėje nebuvo rodomi darbuotojai ir šablonai (pamainos įmonė dabar imama iš darbuotojo arba, kol jo nėra, iš dabartinės įmonės); manifeste nurodytas autorius „SEFU, MB developers“ |
+| 2026-10-07 | Žingsnis 2 ištestuotas rankiniu būdu, visi punktai praėjo. Testavimo punktai sunumeruoti (`<žingsnis>.<nr>.`) |
+| 2026-10-07 | Žingsnis 3 įgyvendintas. Papildomai jau dabar rodomas rankinio laiko žymėjimas („R*“, pilkas „06-12“), kuris planuotas žingsnyje 5 (duomenys jau yra). „Shifts (list)“ paliktas iki žingsnio 4, kad būtų galima kurti testines pamainas |
+| 2026-10-07 | Žingsnis 3 ištestuotas, visi punktai praėjo |
+| 2026-10-07 | Žingsnis 4 įgyvendintas. Mėnesio naršymas perkeltas į dešinę valdymo skydelio pusę, o jo vietą užėmė teptukų juosta. „Shifts (list)“ paliktas tik developer režimui (problemų tyrimui, eksportui). Pritaikius tą patį šabloną pamainai su pakeistu laiku, laikas grąžinamas į šablono |
+| 2026-10-07 | Žingsnio 4 pataisa: išsaugant naują pamainą iš lentelės buvo klaida „Missing required value for the field 'Start'“. Apskaičiuojami pamainos laukai pažymėti `precompute=True`, kad būtų apskaičiuojami prieš įrašant į DB |
+| 2026-10-07 | Žingsnis 4 ištestuotas, visi punktai praėjo |
+| 2026-10-07 | Žingsnis 5 įgyvendintas. Žvaigždutė („R*“) lentelėje dabar nustatoma lyginant su dabartiniu šablono laiku: jei šablonas pakeičiamas po pamainos suplanavimo, senos pamainos rodomos su „*“. Rankinis laikas įvedamas ir rodomas naršyklės laiko juosta, o serveryje interpretuojamas darbuotojo laiko juosta (turi sutapti) |
+| 2026-10-07 | Žingsnio 5 pataisa: atidarant „Custom time“ formą buvo klaida „ctx.String is not a function“ (Owl šablone nepasiekiamos globalios JS funkcijos) |
+| 2026-10-07 | Žingsnio 5 pakeitimas (naudotojo prašymu): „Custom time“ Start / End laukai pakeisti iš naršyklės `type="time"` (formatas priklauso nuo OS / naršyklės, rodė AM/PM) į teksto laukus su 24 val. formatu ir trumpais įvedimais |
+| 2026-10-07 | Žingsnis 5 ištestuotas, visi punktai praėjo |
+| 2026-10-07 | Žingsnis 6 įgyvendintas. Ribos saugomos sistemos parametruose (`hr_shift_planning.*`), nustatymų blokas pridėtas prie Employees nustatymų (tik naujas blokas, esami nekeičiami). Lentelės duomenys papildomai apima 6 dienas prieš mėnesį ir 1 dieną po jo. Įspėjimų mygtuką ir sąrašą mato ir Viewer |
+| 2026-10-07 | Žingsnis 6 ištestuotas, visi punktai praėjo |
+| 2026-10-07 | Žingsnis 7 įgyvendintas. Su teptuku langelis dabar užpildomas atleidus pelę (ne paspaudus), kad tas pats veiksmas tiktų ir tempimui. Po raidės / Delete žymėjimas pereina į kitą dieną. Kopijavimas taikomas matomiems (filtruotiems) darbuotojams. Serveris grąžina 7 (buvo 6) dienas prieš mėnesį — reikia savaitės kopijavimui |
+| 2026-10-07 | Žingsnis 7 ištestuotas, visi punktai praėjo |
+| 2026-10-07 | Į žingsnį 8 įtrauktas savaičių atskyrimas lentelėje (savaitė prasideda pirmadienį); specifikacijoje papildytas FR-2.2 |
+| 2026-10-07 | Žingsnis 8A: savaičių atskyrimas, įspėjimų talpykla, `uninstall_hook`, greitaveikos duomenų scenarijus, specifikacijos skyrius „Įgyvendinimo pastabos“. Vertimas (8B) laukia `.pot` failo |
+| 2026-10-07 | Žingsnis 8B: naudotojas sugeneravo `.pot`, paruoštas `i18n/lt.po` (105 įrašai). Sukurtas produkto aprašymas administratoriui ir techniniam prižiūrėtojui: [hr_shift_planning_product.md](hr_shift_planning_product.md) |
+| 2026-10-07 | Žingsnio 8 pataisa: savaičių atskyriklis nesimatė, nes CSS kintamasis `--bs-gray-500` Odoo backend'e neapibrėžtas. Dabar naudojamas SCSS kintamasis `$o-gray-600`, linija 3px |
+| 2026-10-07 | 8.8: `hr` testai darbinėje DB — 0 failed, 5 errors iš 122; visos 5 klaidos dėl DB duomenų (nėra naudotojo `admin` / slaptažodžio `admin`, naudotojas jau susietas su darbuotoju), ne dėl `hr_shift_planning`. Laikoma atlikta |
+| 2026-10-07 | Žingsnio 8 pataisa: Odoo kompiliuoja Bootstrap be `bs-` prefikso, todėl **visi** `var(--bs-*)` lentelės stiliuose buvo neapibrėžti — prilipę stulpeliai (Σ h, darbuotojai, antraštė) neturėjo fono ir priartinus persidengdavo su langeliais, dalis spalvų (savaitgaliai, šiandiena, šventės, žymėjimas, įspėjimai) nerodyta. Visi pakeisti Odoo SCSS kintamaisiais (`$o-view-background-color`, `$border-color`, `$primary`, `$warning`, `$o-gray-*`) |
+| 2026-10-08 | Žingsnis 8 ištestuotas, visi punktai praėjo. Visi plano žingsniai baigti — modulis `hr_shift_planning` 19.0.1.0.0 paruoštas naudojimui |

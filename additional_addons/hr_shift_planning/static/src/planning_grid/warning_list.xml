@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="hr_shift_planning.ShiftWarningList">
+        <div class="o_shift_warning_list list-group list-group-flush">
+            <button t-foreach="props.issues" t-as="issue" t-key="issue_index"
+                    class="list-group-item list-group-item-action o_shift_warning_item"
+                    t-on-click="() => this.select(issue)">
+                <div class="d-flex justify-content-between gap-3">
+                    <span class="fw-bold" t-esc="issue.employeeName"/>
+                    <span class="text-muted text-nowrap" t-esc="issue.dateLabel"/>
+                </div>
+                <div class="small"><i class="fa fa-exclamation-triangle text-warning me-1"/><t t-esc="issue.message"/></div>
+            </button>
+        </div>
+    </t>
+
+</templates>
