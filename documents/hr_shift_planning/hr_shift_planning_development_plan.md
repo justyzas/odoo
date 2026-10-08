@@ -4,6 +4,7 @@
 |---|---|
 | **Specifikacija** | [hr_shift_planning_specs.md](hr_shift_planning_specs.md) |
 | **Produkto aprašymas** | [hr_shift_planning_product.md](hr_shift_planning_product.md) |
+| **Naudotojo instrukcija** | [hr_shift_planning_user_guide.md](hr_shift_planning_user_guide.md) |
 | **Modulio vieta** | `additional_addons/hr_shift_planning/` |
 | **Paskutinis atnaujinimas** | 2026-10-08 |
 

@@ -10,7 +10,7 @@
 | **Licencija** | LGPL-3 |
 | **Skirta** | Sistemos administratoriui ir techniniam prižiūrėtojui |
 
-Susiję dokumentai: [reikalavimų specifikacija](hr_shift_planning_specs.md) · [kūrimo planas](hr_shift_planning_development_plan.md)
+Susiję dokumentai: [naudotojo instrukcija](hr_shift_planning_user_guide.md) · [reikalavimų specifikacija](hr_shift_planning_specs.md) · [kūrimo planas](hr_shift_planning_development_plan.md)
 
 ---
 
