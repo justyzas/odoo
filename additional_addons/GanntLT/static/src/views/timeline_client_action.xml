@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="gannt_lt.GanntLTView">
+        <div class="o_timeline_view h-100 d-flex flex-column o_all_in_one_timeline_action o_gannt_lt_action" t-ref="root">
+            <Layout display="display" className="'h-100 d-flex flex-column'">
+                <t t-set-slot="control-panel-additional-actions">
+                    <CogMenu t-if="env.searchModel"/>
+                </t>
+                <t t-set-slot="layout-actions">
+                    <SearchBar t-if="env.searchModel and searchBarToggler and searchBarToggler.state.showSearchBar" toggler="searchBarToggler"/>
+                </t>
+                <t t-set-slot="control-panel-navigation-additional">
+                    <t t-if="env.searchModel and searchBarToggler" t-component="searchBarToggler.component" t-props="searchBarToggler.props"/>
+                </t>
+
+                <div class="all_in_one_timeline_container">
+                    <!-- Top Toolbar -->
+                    <div class="timeline_toolbar">
+                        <div class="toolbar_left">
+                            <!-- Project Filter Dropdown -->
+                            <select class="form-select form-select-sm project_select" style="width: 200px;" t-model="state.selectedProjectId" t-on-change="onProjectChange">
+                                <option value="0">Visi projektai</option>
+                                <t t-foreach="state.projects" t-as="p" t-key="p.id">
+                                    <option t-att-value="p.id" t-esc="p.name"/>
+                                </t>
+                            </select>
+                        </div>
+
+                        <div class="toolbar_right">
+                            <!-- Quick Focus to Today & Hierarchy & Fit to Screen -->
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary btn_timeline" t-on-click="navigateToday" title="Grįžti į šiandien / Focus on Today">
+                                    <i class="fa fa-calendar-check-o me-1"/> Šiandien
+                                </button>
+                                <button class="btn btn-outline-secondary btn_timeline" t-att-disabled="!canUndo" t-on-click="undoAction" title="Atšaukti paskutinį veiksmą (Ctrl+Z) / Undo">
+                                    <i class="fa fa-undo me-1"/> Atšaukti
+                                </button>
+                                <button class="btn btn-outline-secondary btn_timeline" t-on-click="expandAll" title="Išskleisti viską">
+                                    <i class="fa fa-expand me-1"/> Išskleisti
+                                </button>
+                                <button class="btn btn-outline-secondary btn_timeline" t-on-click="collapseAll" title="Suskleisti viską">
+                                    <i class="fa fa-compress me-1"/> Suskleisti
+                                </button>
+                                <button class="btn btn-outline-secondary btn_timeline" t-on-click="fitToScreen" title="Pritaikyti pasirinktą užduotį arba visą tvarkaraštį ekrane (Fit to screen)">
+                                    <i class="fa fa-arrows-alt me-1"/> Pritaikyti ekrane
+                                </button>
+                            </div>
+
+                            <!-- Single Unified Zoom Controls (Replaces Diena, Savaitė, Mėnuo, Metai) -->
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary btn_timeline" t-on-click="zoomOut" title="Mažinti / Zoom Out">
+                                    <i class="fa fa-search-minus"/>
+                                </button>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button class="btn btn-outline-secondary btn_timeline dropdown-toggle" type="button" data-bs-toggle="dropdown" title="Pasirinkti mastelį">
+                                        <span t-esc="state.zoomLevel + '%'"/>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end shadow">
+                                        <li><a class="dropdown-item small" href="#" t-on-click.prevent="() => this.setZoom(10)">10% – Ekstremalus (5+ metai)</a></li>
+                                        <li><a class="dropdown-item small" href="#" t-on-click.prevent="() => this.setZoom(15)">15% – Ekstremalus (3–5 metai)</a></li>
+                                        <li><a class="dropdown-item small" href="#" t-on-click.prevent="() => this.setZoom(20)">20% – Keli metai (2–3 metai)</a></li>
+                                        <li><a class="dropdown-item small" href="#" t-on-click.prevent="() => this.setZoom(35)">35% – Metai (1–2 metai)</a></li>
+                                        <li><a class="dropdown-item small" href="#" t-on-click.prevent="() => this.setZoom(50)">50% – Pusmetis (6 mėn.)</a></li>
+                                        <li><a class="dropdown-item small" href="#" t-on-click.prevent="() => this.setZoom(75)">75% – Keli mėnesiai</a></li>
+                                        <li><a class="dropdown-item small" href="#" t-on-click.prevent="() => this.setZoom(100)">100% – Normalus (Dienomis)</a></li>
+                                        <li><a class="dropdown-item small" href="#" t-on-click.prevent="() => this.setZoom(150)">150% – Padidintas</a></li>
+                                        <li><a class="dropdown-item small" href="#" t-on-click.prevent="() => this.setZoom(250)">250% – Maksimalus (Dienomis)</a></li>
+                                        <li><hr class="dropdown-divider"/></li>
+                                        <li><a class="dropdown-item small fw-bold text-primary" href="#" t-on-click.prevent="() => this.setZoom(300)"><i class="fa fa-clock-o me-1"/>300% – Valandinis (2 val.)</a></li>
+                                        <li><a class="dropdown-item small fw-bold text-primary" href="#" t-on-click.prevent="() => this.setZoom(400)"><i class="fa fa-clock-o me-1"/>400% – Valandinis (1 val.)</a></li>
+                                        <li><a class="dropdown-item small fw-bold text-primary" href="#" t-on-click.prevent="() => this.setZoom(500)"><i class="fa fa-clock-o me-1"/>500% – Valandinis detalus (1 val. platus)</a></li>
+                                        <li><a class="dropdown-item small fw-bold text-success" href="#" t-on-click.prevent="() => this.setZoom(600)"><i class="fa fa-clock-o me-1"/>600% – Minutinis (15 min.)</a></li>
+                                    </ul>
+                                </div>
+                                <button class="btn btn-outline-secondary btn_timeline" t-on-click="zoomIn" title="Didinti / Zoom In">
+                                    <i class="fa fa-search-plus"/>
+                                </button>
+                            </div>
+
+                            <!-- Export Dropdown -->
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle btn_timeline" type="button" data-bs-toggle="dropdown">
+                                    <i class="fa fa-download me-1"/> Eksportuoti
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow">
+                                    <li><a class="dropdown-item" href="#" t-on-click.prevent="exportToPDF"><i class="fa fa-file-pdf-o text-danger me-2"/>Eksportuoti į PDF</a></li>
+                                    <li><a class="dropdown-item" href="#" t-on-click.prevent="exportToPNG"><i class="fa fa-file-image-o text-primary me-2"/>Eksportuoti į PNG</a></li>
+                                    <li><a class="dropdown-item" href="#" t-on-click.prevent="exportToExcel"><i class="fa fa-file-excel-o text-success me-2"/>Eksportuoti į Excel</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Main Area -->
+                    <div class="timeline_main_area">
+                        <!-- Gantt Canvas Container -->
+                        <div class="gantt_canvas_box" t-ref="ganttElement"/>
+                    </div>
+                </div>
+            </Layout>
+        </div>
+    </t>
+    <t t-name="all_in_one_timeline.AllInOneTimelineView">
+        <t t-call="gannt_lt.GanntLTView"/>
+    </t>
+</templates>
