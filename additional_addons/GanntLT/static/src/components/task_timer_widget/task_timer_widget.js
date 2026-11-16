@@ -110,7 +110,11 @@ export class TaskTimerWidget extends Component {
 
     get isDone() {
         const state = this.activeRecord?.data?.state;
-        return state === "1_done" || state === "1_canceled";
+        return state === "03_approved" || state === "1_done";
+    }
+
+    get isCanceled() {
+        return this.activeRecord?.data?.state === "1_canceled";
     }
 
     get hasTime() {
@@ -157,4 +161,3 @@ export const taskTimerWidget = {
 };
 
 registry.category("view_widgets").add("task_timer_widget", taskTimerWidget);
-registry.category("fields").add("task_timer_widget", taskTimerWidget);

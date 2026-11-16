@@ -19,12 +19,17 @@
                         <div class="toolbar_left d-flex align-items-center gap-2">
                             <!-- Project Filter Dropdown -->
                             <select class="form-select form-select-sm project_select" t-model="state.selectedProjectId" t-on-change="onProjectChange">
-                                <option value="0">Visi projektai</option>
+                                <option value="0" t-att-selected="('' + state.selectedProjectId) === '0'">Visi projektai</option>
+                                <option value="overdue" t-att-selected="('' + state.selectedProjectId) === 'overdue'">🔥 Vėluojantys projektai</option>
+                                <option t-if="state.hasMrp" value="only_mo" t-att-selected="('' + state.selectedProjectId) === 'only_mo'">⚙️ Visi gamybos užsakymai (MO)</option>
                                 <t t-foreach="state.projects" t-as="p" t-key="p.id">
-                                    <option t-att-value="p.id" t-esc="p.name"/>
+                                    <option t-att-value="'' + p.id" t-att-selected="('' + state.selectedProjectId) === ('' + p.id)" t-esc="p.name"/>
                                 </t>
                             </select>
-                            <span t-if="!state.canEdit" class="badge text-bg-secondary" title="Jūs turite tik peržiūros (Can View) teises">
+                            <span t-if="!state.canEdit and state.canTrackTime" class="badge text-bg-info text-white" title="Galite fiksuoti darbo laiką Odoo formose, bet grafiko redagavimas Gantt lange užrakintas">
+                                <i class="fa fa-clock-o me-1"/>Darbo laiko fiksavimas (Gantt tik peržiūra)
+                            </span>
+                            <span t-elif="!state.canEdit" class="badge text-bg-secondary" title="Jūs turite tik peržiūros (Can View) teises">
                                 <i class="fa fa-eye me-1"/>Tik peržiūra
                             </span>
                         </div>
@@ -154,7 +159,7 @@
                                 <button class="btn btn-secondary" t-on-click="collapseAll" title="Suskleisti viską">
                                     <i class="fa fa-compress me-1"/> Suskleisti
                                 </button>
-                                <button class="btn btn-secondary" t-on-click="resetView" title="Atstatyti į pradinį vaizdą (40%, suskleista, centruota į šiandien) / Reset View">
+                                <button class="btn btn-secondary" t-on-click="resetView" title="Atstatyti į pradinį vaizdą (0%, suskleista, centruota į šiandien) / Reset View">
                                     <i class="fa fa-refresh me-1"/> Pradinis vaizdas
                                 </button>
                             </div>
@@ -172,17 +177,10 @@
                                 </button>
                             </div>
 
-                            <!-- Export Dropdown -->
-                            <div class="dropdown">
-                                <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                    <i class="fa fa-download me-1"/> Eksportuoti
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end shadow">
-                                    <li><a class="dropdown-item" href="#" t-on-click.prevent="exportToPDF"><i class="fa fa-file-pdf-o text-danger me-2"/>Eksportuoti į PDF</a></li>
-                                    <li><a class="dropdown-item" href="#" t-on-click.prevent="exportToPNG"><i class="fa fa-file-image-o text-primary me-2"/>Eksportuoti į PNG</a></li>
-                                    <li><a class="dropdown-item" href="#" t-on-click.prevent="exportToExcel"><i class="fa fa-file-excel-o text-success me-2"/>Eksportuoti į Excel</a></li>
-                                </ul>
-                            </div>
+                            <!-- Single Direct Export to Excel Button -->
+                            <button class="btn btn-sm btn-secondary btn_export_excel" type="button" t-on-click="exportToExcel" title="Eksportuoti projekto tvarkaraštį į Excel (.xlsx)">
+                                <i class="fa fa-file-excel-o text-success me-1"/> Eksportuoti į Excel
+                            </button>
                         </div>
                     </div>
 

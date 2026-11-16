@@ -1,10 +1,7 @@
 from odoo import models, fields, api, _
+from odoo.exceptions import AccessError, UserError
 from odoo.tools.misc import format_datetime
-from markupsafe import Markup
-import logging
 import math
-
-_logger = logging.getLogger(__name__)
 
 
 class ProjectTaskPauseWizard(models.TransientModel):
@@ -58,6 +55,22 @@ class ProjectTaskPauseWizard(models.TransientModel):
         if not task:
             return {"type": "ir.actions.act_window_close"}
 
+        task._check_gannt_lt_timer_access()
+        task.check_access("write")
+
+        if task.active_user_id and task.active_user_id != self.env.user:
+            can_manage = (
+                self.env.is_superuser()
+                or self.env.user.has_group("base.group_system")
+                or self.env.user.has_group("project.group_project_manager")
+                or self.env.user.has_group("GanntLT.group_gannt_lt_manager")
+            )
+            if not can_manage:
+                raise UserError(
+                    _("Pristabdyti užduotį gali tik ją vykdantis vartotojas (%s) arba projekto vadovas.")
+                    % task.active_user_id.name
+                )
+
         if not task.is_timer_running:
             # Timer already stopped (double click / stale dialog): never log time twice.
             return {"type": "ir.actions.act_window_close"}
@@ -71,57 +84,69 @@ class ProjectTaskPauseWizard(models.TransientModel):
 
         elapsed_min = max(1, int(math.ceil(diff_sec / 60.0 - 1e-9))) if diff_sec > 0 else 0
         elapsed_hours = elapsed_min / 60.0
-        mins = diff_sec // 60
-        rem_sec = diff_sec % 60
-        dur_str = f"{mins} min. {rem_sec} sek." if mins > 0 else f"{diff_sec} sek."
 
-        # 1. Register in Timesheets (account.analytic.line)
-        emp = self.env.user.employee_id
+        # 1. Register in Timesheets (account.analytic.line) without .sudo() bypass
+        active_worker = task.active_user_id or self.env.user
+        emp = False
+        if active_worker == self.env.user:
+            try:
+                emp = active_worker.employee_id
+            except AccessError:
+                emp = False
         if not emp and "hr.employee" in self.env:
-            emp = self.env["hr.employee"].search([("user_id", "=", self.env.uid)], limit=1)
-        if not emp and "hr.employee" in self.env:
-            emp = self.env["hr.employee"].search([], limit=1)
+            emp_domain = [("user_id", "=", active_worker.id)]
+            if task.company_id:
+                emp_domain.append(("company_id", "in", [False, task.company_id.id]))
+            emp = self.env["hr.employee"].sudo().search(emp_domain, limit=1)
 
         company = task.company_id or (emp and emp.company_id) or self.env.company
-        if task.project_id and "account.analytic.line" in self.env and elapsed_hours > 0:
-            try:
-                self.env["account.analytic.line"].create({
-                    "name": self.reason or "Pristabdyta (Paused)",
-                    "task_id": task.id,
-                    "project_id": task.project_id.id,
-                    "employee_id": emp.id if emp else False,
-                    "user_id": emp.user_id.id if emp and emp.user_id else self.env.uid,
-                    "company_id": company.id if company else False,
-                    "date": fields.Date.today(),
-                    "unit_amount": elapsed_hours,
-                })
-            except Exception as e:
-                _logger.warning("Could not create timesheet line on pause: %s", e)
+        if task.project_id and getattr(task.project_id, "allow_timesheets", True) and "account.analytic.line" in self.env and elapsed_hours > 0 and emp:
+            self.env["account.analytic.line"].with_context(mail_notrack=True).create({
+                "name": self.reason or _("Pristabdyta (Paused)"),
+                "task_id": task.id,
+                "project_id": task.project_id.id,
+                "employee_id": emp.id,
+                "user_id": active_worker.id,
+                "company_id": company.id if company else False,
+                "date": fields.Date.context_today(self),
+                "unit_amount": elapsed_hours,
+            })
 
-        # 2. Post to Chatter with reason and duration
+        # 2. Post to Chatter with 1-line format: [Users name] Pristabdyta YYYY.MM.DD -HH:MM [Priežastis]
         user_name = self.env.user.name
         tz = self.env.user.tz or self.env.context.get("tz") or "Europe/Vilnius"
         try:
-            pause_time_str = format_datetime(self.env, now, tz=tz, dt_format="yyyy-MM-dd HH:mm:ss")
+            pause_time_str = format_datetime(self.env, now, tz=tz, dt_format="yyyy.MM.dd -HH:mm")
         except Exception:
-            pause_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
+            pause_time_str = now.strftime("%Y.%m.%d -%H:%M")
 
-        chatter_body = (
-            f"⏸️ <b>Darbai pristabdyti (Task Paused):</b> {user_name} pristabdė darbą [{pause_time_str}].<br/>"
-            f"• <b>Užregistruota darbo žiniaraštyje (Timesheets):</b> {elapsed_min} min. (faktiškai {dur_str})<br/>"
-            f"• <b>Priežastis:</b> {self.reason}"
-        )
-        task.message_post(body=Markup(chatter_body), subtype_xmlid="mail.mt_note")
+        reason_clean = " ".join((self.reason or "").splitlines()).strip()
+        chatter_body = f"{user_name} Pristabdyta {pause_time_str} {reason_clean}".strip()
+        task.message_post(body=chatter_body, subtype_xmlid="mail.mt_note")
 
         # 3. Update task timer state and accumulated seconds
         pause_vals = {
             "is_timer_running": False,
             "timer_start": False,
             "timer_total_seconds": new_total_sec,
+            "is_paused": True,
+            "last_pause_reason": reason_clean or _("Pristabdyta"),
+            "last_pause_date": now,
+            "active_user_id": active_worker.id,
         }
         stop_vals, _info = task._work_stop_vals(now, new_total_sec, finished=False)
         pause_vals.update(stop_vals)
-        task.with_context(gannt_auto_plan=True).write(pause_vals)
-        task._propagate_deadline_upward()
+
+        from . import project_task as project_task_mod
+
+        trusted_token = getattr(project_task_mod, "_TRUSTED_CONTEXT_TOKEN", None)
+        write_ctx = {"gannt_auto_plan": True, "mail_notrack": True}
+        prop_ctx = {"mail_notrack": True}
+        if trusted_token is not None:
+            write_ctx["_gannt_lt_trusted_token"] = trusted_token
+            prop_ctx["_gannt_lt_trusted_token"] = trusted_token
+
+        task.with_context(**write_ctx).write(pause_vals)
+        task.with_context(**prop_ctx)._propagate_deadline_upward()
 
         return {"type": "ir.actions.act_window_close"}

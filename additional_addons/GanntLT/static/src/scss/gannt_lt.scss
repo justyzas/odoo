@@ -625,6 +625,7 @@
     .gantt_task_line {
         height: 34px !important;
         line-height: 34px !important;
+        min-width: 3px !important;
         border-radius: 6px !important;
         border: 1px solid #5f5285 !important;
         background-color: var(--bs-primary, #71639e) !important;
@@ -668,6 +669,7 @@
             gap: 6px;
             width: 100%;
             height: 100%;
+            box-sizing: border-box !important;
             pointer-events: none;
             overflow: hidden;
 
@@ -859,11 +861,16 @@
             box-shadow: 0 2px 4px rgba(113, 99, 158, 0.25) !important;
         }
 
-        /* Approved (SOLID GREEN, standard border, NO white border) */
+        /* Approved (SOLID GREEN, standard border, NO white border, NO checkmark) */
         &.task_approved, &.task_state_approved {
             background-color: #10b981 !important;
             border: 1px solid #059669 !important;
             box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3) !important;
+
+            .gantt_task_progress {
+                background-color: transparent !important;
+                border-right: none !important;
+            }
         }
 
         /* Changes Requested (Amber / Orange) */
@@ -902,6 +909,84 @@
 
             .gantt_task_progress {
                 background-color: rgba(0, 0, 0, 0.35) !important;
+            }
+        }
+
+        &.task_timer_active {
+            box-shadow: 0 0 0 2px #059669, 0 3px 8px rgba(5, 150, 105, 0.4) !important;
+            border-color: #059669 !important;
+        }
+
+        &.task_timer_paused {
+            box-shadow: 0 0 0 2px #d97706, 0 3px 8px rgba(217, 119, 6, 0.4) !important;
+            border-color: #d97706 !important;
+        }
+
+        &.task_locked_by_other {
+            background: repeating-linear-gradient(
+                -45deg,
+                #1e293b,
+                #1e293b 8px,
+                #334155 8px,
+                #334155 16px
+            ) !important;
+            border: 1.5px solid #0f172a !important;
+            cursor: not-allowed !important;
+        }
+
+        &.task_has_approved_plan {
+            border-left: 4px solid #0284c7 !important;
+        }
+
+        /* READONLY BARS: PO, MO, DELIVERY, AND GROUP CONTAINERS */
+        &.readonly_bar {
+            cursor: pointer !important;
+
+            .gantt_task_drag, .gantt_link_point {
+                display: none !important;
+            }
+        }
+
+        &.gantt_group_container {
+            background-color: #475569 !important;
+            border: 1px solid #334155 !important;
+            box-shadow: 0 2px 4px rgba(71, 85, 105, 0.25) !important;
+            font-weight: 600 !important;
+        }
+
+        /* Purchase Orders (Sky Blue) */
+        &.task_po {
+            background-color: #0284c7 !important;
+            border: 1px solid #0369a1 !important;
+            box-shadow: 0 2px 4px rgba(2, 132, 199, 0.3) !important;
+
+            &.task_po_done {
+                background-color: #16a34a !important;
+                border: 1px solid #15803d !important;
+            }
+        }
+
+        /* Manufacturing Orders (Deep Orange) */
+        &.task_mo {
+            background-color: #ea580c !important;
+            border: 1px solid #c2410c !important;
+            box-shadow: 0 2px 4px rgba(234, 88, 12, 0.3) !important;
+
+            &.task_mo_done {
+                background-color: #16a34a !important;
+                border: 1px solid #15803d !important;
+            }
+        }
+
+        /* Delivery Orders (Teal) */
+        &.task_delivery {
+            background-color: #0f766e !important;
+            border: 1px solid #115e59 !important;
+            box-shadow: 0 2px 4px rgba(15, 118, 110, 0.3) !important;
+
+            &.task_delivery_done {
+                background-color: #16a34a !important;
+                border: 1px solid #15803d !important;
             }
         }
 
@@ -956,6 +1041,47 @@
         }
 
         .deadline_badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: #ffffff;
+            white-space: nowrap;
+            padding: 0 4px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    }
+
+    /* Early Finish Indicator Bar ("- uodegėlė" for tasks completed before planned end) */
+    .timeline_early_finish_bar {
+        position: absolute;
+        top: -1px;
+        bottom: -1px;
+        z-index: 10;
+        border-radius: 0 6px 6px 0;
+        background: linear-gradient(135deg, rgba(13, 148, 136, 0.90), rgba(16, 185, 129, 0.95)) !important;
+        border: 1px solid #0f766e;
+        border-left: 2px dashed rgba(255, 255, 255, 0.9) !important;
+        box-shadow: 0 2px 5px rgba(13, 148, 136, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        cursor: pointer;
+        transition: filter 0.15s ease;
+        overflow: hidden;
+        pointer-events: auto;
+
+        &:hover {
+            filter: brightness(1.15);
+            z-index: 12;
+        }
+
+        .early_badge {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -1034,47 +1160,6 @@
             color: #495057;
             min-width: 32px;
             text-align: right;
-        }
-    }
-
-    .grid_action_btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 22px;
-        height: 22px;
-        border-radius: 3px;
-        cursor: pointer;
-        color: #6c757d;
-        font-size: 12px;
-        transition: all 0.15s ease;
-
-        &:hover {
-            background-color: rgba(113, 99, 158, 0.1);
-            color: var(--bs-primary, #71639e);
-        }
-
-        &[data-action="add_subtask"], &[data-action="add_task_to_project"], &[data-action="add_task_to_milestone"] {
-            color: var(--bs-primary, #71639e);
-            font-weight: bold;
-            &:hover {
-                background-color: var(--bs-primary, #71639e);
-                color: #ffffff;
-            }
-        }
-
-        &[data-action="add_milestone_to_project"] {
-            color: #d97706;
-            font-weight: bold;
-            &:hover {
-                background-color: #f59e0b;
-                color: #ffffff;
-            }
-        }
-
-        &.text-danger:hover {
-            background-color: #fee2e2;
-            color: var(--bs-danger, #dc3545) !important;
         }
     }
 }
@@ -1229,3 +1314,94 @@ div.gantt_tooltip {
         font-size: 0.5rem;
     }
 }
+
+@keyframes pulseTimerDot {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.08); opacity: 0.75; }
+}
+
+.bar_status_running {
+    display: inline-flex;
+    align-items: center;
+    background-color: #059669;
+    color: #ffffff !important;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    animation: pulseTimerDot 2s infinite ease-in-out;
+}
+
+.bar_status_paused {
+    display: inline-flex;
+    align-items: center;
+    background-color: #d97706;
+    color: #ffffff !important;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.bar_status_locked_other {
+    display: inline-flex;
+    align-items: center;
+    background-color: #334155;
+    color: #f8fafc !important;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    border: 1px solid #475569;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.bar_anchor_approved {
+    color: #38bdf8 !important;
+    font-size: 11px;
+    margin-right: 4px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
+}
+
+/* Overdue Past Fire Badge in Tree Grid */
+.tree_fire_badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #ef4444;
+    color: #ffffff !important;
+    border-radius: 4px;
+    padding: 1px 4px;
+    margin-right: 5px;
+    font-size: 10px;
+    line-height: 12px;
+    vertical-align: middle;
+    box-shadow: 0 1px 2px rgba(239, 68, 68, 0.4);
+
+    i {
+        font-size: 10px;
+        color: #ffffff !important;
+        animation: firePulse 1.8s infinite ease-in-out;
+    }
+}
+
+@keyframes firePulse {
+    0%, 100% {
+        transform: scale(1);
+        filter: drop-shadow(0 0 1px #ffedd5);
+    }
+    50% {
+        transform: scale(1.15);
+        filter: drop-shadow(0 0 3px #f97316);
+    }
+}
+
+
+
+
+

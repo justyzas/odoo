@@ -1,7 +1,7 @@
-# GanntLT 2.0 (Odoo 19)
+# GanntLT 3.0 (Odoo 19)
 
 **Idėjos autorius ir savininkas:** Benas Jasiulis  
-**Versija:** 2.0.0  
+**Versija:** 3.0.0  
 **Suderinamumas:** Odoo 19.0 Community & Enterprise  
 **Priklausomybės (Dependencies):** Tik standartiniai Odoo moduliai `project` ir `hr_timesheet` (100% Standalone – nereikia jokių papildomų ar trečiųjų šalių modulių).
 
@@ -56,18 +56,20 @@
    - Dvigubas paspaudimas atveria pilnavertę Odoo formą su Chatter ir valdymo juosta.
    - Trinant naudojamas gimtasis Odoo `ConfirmationDialog` su lietuviškais mygtukais „Ištrinti“ ir „Atšaukti“.
 
-10. **Greitas Eksportas**:
-    - Eksporto meniu su trimis opcijomis: Excel (.xlsx), PNG aukštos raiškos paveikslėlis ir PDF spausdinys.
+10. **Greitas Eksportas į Excel**:
+    - Tiesioginis projekto tvarkaraščio eksportas į Excel (`.xlsx`) su kiekvieno projekto lapu, šventėmis ir Gantt juostomis.
 
-11. **Prieigos Teisės (Access Rights)**:
-    - `GanntLT: Can View` (tik peržiūra be galimybės stumdyti) ir `GanntLT: Can Edit` (pilnas redagavimas).
+11. **3 Lygių Prieigos Teisės (Access Rights)**:
+    - `GanntLT: Can View` – 100% tik peržiūra, darbo laikmatis paslėptas.
+    - `GanntLT: Can Track Time` – 100% tik peržiūra Gantt lange, tačiau leidžiamas darbo laikmatis užduoties formoje.
+    - `GanntLT: Can Edit` – pilnas Gantt redagavimas ir darbo laikmačio valdymas.
 
 ---
 
 ## Diegimo instrukcija į bet kurį Odoo 19:
 
 1. **Nukopijuokite katalogą**:
-   Išarchyvuokite `GanntLT` katalogą į savo Odoo priedų aplanką (pvz., `/opt/odoo/custom_addons/` arba `custom_addons/`).
+   Išarchyvuokite `GanntLT_v3.0.zip` (`GanntLT` katalogą) į savo Odoo priedų aplanką (pvz., `/opt/odoo/custom_addons/` arba `custom_addons/`).
 
 2. **Atnaujinkite priedų sąrašą**:
    - Prisijunkite prie Odoo administratoriaus teisėmis.
@@ -75,10 +77,8 @@
    - Eikite į meniu **Programos (Apps)** ir viršuje paspauskite **Atnaujinti programų sąrašą (Update Apps List)**.
 
 3. **Įdiekite modulį**:
-   - Paieškos laukelyje įveskite `GanntLT` (pašalinkite filtrą „Programos / Apps“).
+   - Paieškos laukelyje įveskite `GanntLT`.
    - Paspauskite mygtuką **Įdiegti (Activate)**.
 
 4. **Naudojimas**:
-   - Viršutiniame Odoo meniu: **Projektas &rarr; GanntLT Tvarkaraštis**.
-   - Užduočių rodinyje: spauskite **Timeline** rodinio mygtuką (fa-tasks piktograma).
-   - Projekto formoje: spauskite statinį mygtuką **GanntLT Tvarkaraštis**.
+   - Atidarykite **Project &rarr; Projects** arba **Project &rarr; Tasks** ir viršutiniame dešiniajame kampe paspauskite **Timeline** rodinio perjungiklio mygtuką (3 horizontalių juostelių `fa-tasks` piktogramą šalia Kanban, List, Calendar, Activity).
