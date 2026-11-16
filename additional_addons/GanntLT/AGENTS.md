@@ -19,3 +19,5 @@ You MUST read and strictly enforce the UI and architecture rules in `custom_addo
      - `GanntLT.group_gannt_lt_manager` (`Can Edit`): full Gantt editing and timer access.
 5. **OWL QWeb Expressions**:
    - Do **NOT** call JavaScript globals like `String(...)`, `Number(...)`, or `Boolean(...)` inside OWL QWeb templates (`static/src/**/*.xml`), as OWL compiles bare identifiers to `ctx.<ident>(...)` and throws `TypeError: ctx.String is not a function`. Use string concatenation (`'' + val`) or component methods instead.
+6. **Keep Release `.zip` in Sync with Git Releases**:
+   - Whenever committing/pushing a version update or release to Git, ALWAYS rebuild the single versioned archive `c:\Users\Beno E16\Downloads\Odoo\GanntLT_v<major.minor>.zip` (e.g., `GanntLT_v3.0.zip`, never create duplicate `GanntLT.zip`) and upload it to the GitHub Release at the same time.

@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Standalone Timeline View for Projects -->
+    <!-- Standalone Timeline View for Projects (priority=1 + js_class ensures GanntLT overrides OCA web_timeline) -->
     <record id="project_project_timeline" model="ir.ui.view">
         <field name="name">project.project.timeline</field>
         <field name="model">project.project</field>
         <field name="type">timeline</field>
+        <field name="priority">1</field>
         <field name="arch" type="xml">
             <timeline
+                js_class="gannt_lt_timeline"
                 date_start="date_start"
                 date_stop="date"
                 default_group_by="partner_id"

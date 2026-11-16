@@ -5431,5 +5431,6 @@ export const GanntLTTimelineView = {
 
 export const AllInOneTimelineView = GanntLTTimelineView;
 
-// Register GanntLT as the timeline view cleanly without monkeypatching views registry
+// Register GanntLT under both custom js_class (to bypass OCA web_timeline preload) and 'timeline'
+registry.category("views").add("gannt_lt_timeline", GanntLTTimelineView, { force: true });
 registry.category("views").add("timeline", GanntLTTimelineView, { force: true });

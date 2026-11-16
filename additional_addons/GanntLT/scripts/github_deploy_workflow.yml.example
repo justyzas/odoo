@@ -1,0 +1,55 @@
+name: Deploy GanntLT Release to Odoo Server
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git tag or branch to deploy (defaults to latest release tag)"
+        required: false
+        default: ""
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check deployment secrets
+        id: check
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Deployment secrets (DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY) are not configured yet. Skipping SSH deploy."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update GanntLT on Odoo server via SSH
+        if: steps.check.outputs.configured == 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_ADDON_DIR: ${{ secrets.DEPLOY_ADDON_DIR || '/opt/odoo/custom_addons/GanntLT' }}
+          ODOO_CONF: ${{ secrets.ODOO_CONF || '/etc/odoo/odoo.conf' }}
+          ODOO_DB: ${{ secrets.ODOO_DB }}
+          ODOO_SERVICE: ${{ secrets.ODOO_SERVICE || 'odoo' }}
+          INPUT_REF: ${{ github.event.inputs.ref }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          TAG_ARG="--latest-tag"
+          if [ -n "$INPUT_REF" ]; then
+            TAG_ARG="--tag $INPUT_REF"
+          fi
+
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash '$DEPLOY_ADDON_DIR/scripts/update_gannt_lt.sh' $TAG_ARG -c '$ODOO_CONF' -d '$ODOO_DB' -s '$ODOO_SERVICE'"

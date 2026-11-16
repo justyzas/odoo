@@ -82,3 +82,27 @@
 
 4. **Naudojimas**:
    - Atidarykite **Project &rarr; Projects** arba **Project &rarr; Tasks** ir viršutiniame dešiniajame kampe paspauskite **Timeline** rodinio perjungiklio mygtuką (3 horizontalių juostelių `fa-tasks` piktogramą šalia Kanban, List, Calendar, Activity).
+
+---
+
+## Automatinis Atnaujinimas per Git (be `.zip` failų)
+
+Norint, kad kitas Odoo serveris galėtų atnaujinti `GanntLT` tiesiai iš GitHub (nereikėtų kaskart siųsti `.zip` failų):
+
+1. **Vienkartinis paruošimas serveryje (per read-only GitHub Deploy Key)**:
+   ```bash
+   ssh-keygen -t ed25519 -C "odoo-server-ganntlt" -f ~/.ssh/ganntlt_deploy -N ""
+   # Pridėkite ~/.ssh/ganntlt_deploy.pub į GitHub Repo -> Settings -> Deploy keys (tik skaitymui)
+   cd /opt/odoo/custom_addons
+   GIT_SSH_COMMAND="ssh -i ~/.ssh/ganntlt_deploy" git clone git@github.com:benteris/GanntLT.git
+   ```
+   *(Pažymėkite `core.sshCommand` serverio klone, kad `git fetch`/`git pull` visada naudotų tą raktą: `git -C /opt/odoo/custom_addons/GanntLT config core.sshCommand "ssh -i ~/.ssh/ganntlt_deploy"`)*
+
+2. **Atnaujinimas 1 komanda** (išleidus naują versiją GitHub):
+   ```bash
+   bash /opt/odoo/custom_addons/GanntLT/scripts/update_gannt_lt.sh --latest-tag -c /etc/odoo/odoo.conf -d JUSU_DB -s odoo
+   ```
+
+3. **Visiškai automatinis atnaujinimas**:
+   - **Per Cron / Systemd timer** (pvz. kas naktį ar kas 15 min.): skriptas su `--latest-tag` patikrina ar atsirado nauja `v*` žyma ir atnaujina tik tada, kai išleidžiamas naujas leidimas.
+   - **Per GitHub Actions** (šablonas `scripts/github_deploy_workflow.yml.example`): pridėjus serverio SSH duomenis į GitHub Secrets (`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `ODOO_DB`, `ODOO_SERVICE`) ir įkėlus šabloną į `.github/workflows/deploy.yml`, kiekvienas naujas GitHub Release atnaujins serverį automatiškai.
