@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="hr_shift_template_view_list" model="ir.ui.view">
+        <field name="name">hr.shift.template.list</field>
+        <field name="model">hr.shift.template</field>
+        <field name="arch" type="xml">
+            <list string="Shift Templates">
+                <field name="sequence" widget="handle"/>
+                <field name="color" widget="color" readonly="1"/>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="hour_from" widget="float_time"/>
+                <field name="hour_to" widget="float_time"/>
+                <field name="is_overnight" optional="show"/>
+                <field name="break_minutes" optional="show"/>
+                <field name="duration" widget="float_time"/>
+                <field name="company_id" groups="base.group_multi_company" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="hr_shift_template_view_form" model="ir.ui.view">
+        <field name="name">hr.shift.template.form</field>
+        <field name="model">hr.shift.template</field>
+        <field name="arch" type="xml">
+            <form string="Shift Template">
+                <sheet>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="e.g. Morning"/></h1>
+                    </div>
+                    <group>
+                        <group string="Display">
+                            <field name="code" placeholder="e.g. M"/>
+                            <field name="color" widget="color"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active" invisible="1"/>
+                        </group>
+                        <group string="Working Time">
+                            <field name="hour_from" widget="float_time"/>
+                            <field name="hour_to" widget="float_time"/>
+                            <field name="is_overnight"/>
+                            <field name="break_minutes"/>
+                            <field name="duration" widget="float_time"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="hr_shift_template_view_search" model="ir.ui.view">
+        <field name="name">hr.shift.template.search</field>
+        <field name="model">hr.shift.template</field>
+        <field name="arch" type="xml">
+            <search string="Shift Templates">
+                <field name="name"/>
+                <field name="code"/>
+                <filter name="overnight" string="Ends Next Day" domain="[('is_overnight', '=', True)]"/>
+                <separator/>
+                <filter name="archived" string="Archived" domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="hr_shift_template_action" model="ir.actions.act_window">
+        <field name="name">Shift Templates</field>
+        <field name="res_model">hr.shift.template</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="hr_shift_template_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a shift template
+            </p>
+            <p>
+                Templates (e.g. Morning 06:00-14:00) are assigned to employees in the planning grid.
+            </p>
+        </field>
+    </record>
+
+</odoo>

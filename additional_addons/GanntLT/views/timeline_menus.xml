@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Client Action for GanntLT -->
+    <record id="action_gannt_lt" model="ir.actions.client">
+        <field name="name">GanntLT Tvarkaraštis</field>
+        <field name="tag">gannt_lt.action</field>
+        <field name="target">current</field>
+    </record>
+
+    <!-- Legacy Action ID Alias for Backward Compatibility (NO <menuitem> entries allowed per UI.md / AGENTS.md) -->
+    <record id="action_all_in_one_timeline" model="ir.actions.client">
+        <field name="name">GanntLT Tvarkaraštis</field>
+        <field name="tag">gannt_lt.action</field>
+        <field name="target">current</field>
+    </record>
+</odoo>

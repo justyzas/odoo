@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_project_task_pause_wizard,project.task.pause.wizard,model_project_task_pause_wizard,GanntLT.group_gannt_lt_worker,1,1,1,1
+access_project_task_pause_wizard_project_manager,project.task.pause.wizard.project.manager,model_project_task_pause_wizard,project.group_project_manager,1,1,1,1

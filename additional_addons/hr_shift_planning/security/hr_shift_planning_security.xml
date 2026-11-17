@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record model="res.groups.privilege" id="res_groups_privilege_shift_planning">
+        <field name="name">Working Hours</field>
+        <field name="sequence">15</field>
+        <field name="category_id" ref="base.module_category_human_resources"/>
+    </record>
+
+    <record id="group_shift_viewer" model="res.groups">
+        <field name="name">Viewer</field>
+        <field name="sequence">10</field>
+        <field name="privilege_id" ref="res_groups_privilege_shift_planning"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+        <field name="comment">The user can see the shift planning, but cannot change it.</field>
+    </record>
+
+    <record id="group_shift_planner" model="res.groups">
+        <field name="name">Planner</field>
+        <field name="sequence">20</field>
+        <field name="privilege_id" ref="res_groups_privilege_shift_planning"/>
+        <field name="implied_ids" eval="[(4, ref('group_shift_viewer'))]"/>
+        <field name="user_ids" eval="[(4, ref('base.user_root')), (4, ref('base.user_admin'))]"/>
+        <field name="comment">The user can plan shifts and manage shift templates.</field>
+    </record>
+
+<data noupdate="1">
+    <record id="hr_shift_template_comp_rule" model="ir.rule">
+        <field name="name">Shift template multi company rule</field>
+        <field name="model_id" ref="model_hr_shift_template"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="hr_shift_comp_rule" model="ir.rule">
+        <field name="name">Shift multi company rule</field>
+        <field name="model_id" ref="model_hr_shift"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+</data>
+
+</odoo>

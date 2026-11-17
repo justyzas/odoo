@@ -1,0 +1,5667 @@
+/** @odoo-module **/
+
+import { Component, onWillStart, onMounted, useRef, useState, onWillUnmount, onWillUpdateProps } from "@odoo/owl";
+import { registry } from "@web/core/registry";
+import { useService } from "@web/core/utils/hooks";
+import { loadJS, loadCSS } from "@web/core/assets";
+import { _t } from "@web/core/l10n/translation";
+import { Layout } from "@web/search/layout";
+import { SearchBar } from "@web/search/search_bar/search_bar";
+import { useSearchBarToggler } from "@web/search/search_bar/search_bar_toggler";
+import { CogMenu } from "@web/search/cog_menu/cog_menu";
+import { useSetupAction } from "@web/search/action_hook";
+import { standardViewProps } from "@web/views/standard_view_props";
+import { standardActionServiceProps } from "@web/webclient/actions/action_service";
+import { download } from "@web/core/network/download";
+
+function _optionalizeProps(propsDef) {
+    return Object.fromEntries(
+        Object.entries(propsDef).map(([key, def]) => [
+            key,
+            typeof def === "object" && def !== null && !Array.isArray(def)
+                ? { ...def, optional: true }
+                : { type: def, optional: true },
+        ])
+    );
+}
+
+export const LITHUANIAN_MONTHS = [
+    "Sausis",
+    "Vasaris",
+    "Kovas",
+    "Balandis",
+    "Gegužė",
+    "Birželis",
+    "Liepa",
+    "Rugpjūtis",
+    "Rugsėjis",
+    "Spalis",
+    "Lapkritis",
+    "Gruodis",
+];
+
+export const LITHUANIAN_MONTHS_SHORT = [
+    "Saus",
+    "Vas",
+    "Kov",
+    "Bal",
+    "Geg",
+    "Birž",
+    "Liep",
+    "Rugp",
+    "Rugs",
+    "Spal",
+    "Lapkr",
+    "Gruod",
+];
+
+export const ZOOM_STEPS = Array.from({ length: 21 }, (_, i) => i * 5);
+export const DEFAULT_OVERVIEW_ZOOM = 0;
+export const TIMELINE_VIEW_STATE_KEY = "gannt_lt_viewport_state";
+
+export function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str).replace(/[&<>"']/g, (m) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+    })[m]);
+}
+
+export function getZoomPxPerDay(zoomLevel, visibleWidth = 1100) {
+    const z = Math.max(0, Math.min(100, Number(zoomLevel) || 0));
+    const t = z / 100.0;
+    const vw = Math.max(600, Number(visibleWidth) || 1100);
+    const minPx = vw / 730.0; // At 0% zoom: ~2 years across visible width (clearer bars, smooth ramp)
+    const maxPx = vw * 12.0; // At 100% zoom: ~2 hours across visible width (1-minute resolution)
+    return minPx * Math.pow(maxPx / minPx, t);
+}
+
+export const ZOOM_PX_PER_DAY = new Proxy({}, {
+    get(target, prop) {
+        const lvl = Number(prop);
+        if (!isNaN(lvl)) {
+            return getZoomPxPerDay(lvl);
+        }
+        return 32;
+    }
+});
+
+export const LITHUANIAN_MONTHS_GENITIVE = [
+    "sausio",
+    "vasario",
+    "kovo",
+    "balandžio",
+    "gegužės",
+    "birželio",
+    "liepos",
+    "rugpjūčio",
+    "rugsėjo",
+    "spalio",
+    "lapkričio",
+    "gruodžio",
+];
+
+export const LITHUANIAN_WEEKDAYS = [
+    "Sekmadienis",
+    "Pirmadienis",
+    "Antradienis",
+    "Trečiadienis",
+    "Ketvirtadienis",
+    "Penktadienis",
+    "Šeštadienis",
+];
+
+export const LITHUANIAN_WEEKDAYS_SHORT = [
+    "Sk",
+    "Pr",
+    "An",
+    "Tr",
+    "Kt",
+    "Pn",
+    "Št",
+];
+
+const _FIXED_LT_HOLIDAYS = Object.freeze({
+    "1-1": "Naujieji metai",
+    "2-16": "Lietuvos valstybės atkūrimo diena",
+    "3-11": "Lietuvos nepriklausomybės atkūrimo diena",
+    "5-1": "Tarptautinė darbo diena",
+    "6-24": "Rasos ir Joninių diena",
+    "7-6": "Valstybės (Lietuvos karaliaus Mindaugo karūnavimo) ir Tautiškos giesmės diena",
+    "8-15": "Žolinė (Švč. Mergelės Marijos ėmimo į dangų diena)",
+    "11-1": "Visų Šventųjų diena",
+    "11-2": "Mirusiųjų atminimo (Vėlinių) diena",
+    "12-24": "Kūčių diena",
+    "12-25": "Kalėdų pirmoji diena",
+    "12-26": "Kalėdų antroji diena",
+});
+const _LT_HOLIDAYS_BY_YEAR = new Map();
+
+function _getLithuanianYearHolidays(year) {
+    let yearMap = _LT_HOLIDAYS_BY_YEAR.get(year);
+    if (yearMap) {
+        return yearMap;
+    }
+
+    yearMap = new Map(Object.entries(_FIXED_LT_HOLIDAYS));
+
+    // Movable Christian Easter calculation (Gregorian Computus) computed once per year
+    const a = year % 19;
+    const b = Math.floor(year / 100);
+    const c = year % 100;
+    const d = Math.floor(b / 4);
+    const e = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30;
+    const i = Math.floor(c / 4);
+    const k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const easterMonth = Math.floor((h + l - 7 * m + 114) / 31);
+    const easterDay = ((h + l - 7 * m + 114) % 31) + 1;
+
+    yearMap.set(`${easterMonth}-${easterDay}`, "Krikščionių Velykos (pirmoji diena)");
+    const easterMonday = new Date(year, easterMonth - 1, easterDay + 1);
+    yearMap.set(
+        `${easterMonday.getMonth() + 1}-${easterMonday.getDate()}`,
+        "Krikščionių Velykos (antroji diena)"
+    );
+
+    // Mother's Day: First Sunday of May
+    const may1Day = new Date(year, 4, 1).getDay();
+    yearMap.set(`5-${1 + ((7 - may1Day) % 7)}`, "Motinos diena");
+
+    // Father's Day: First Sunday of June
+    const june1Day = new Date(year, 5, 1).getDay();
+    yearMap.set(`6-${1 + ((7 - june1Day) % 7)}`, "Tėvo diena");
+
+    _LT_HOLIDAYS_BY_YEAR.set(year, yearMap);
+    return yearMap;
+}
+
+/**
+ * Returns official Lithuanian National Holiday name if the given date is a holiday.
+ * Covers all 16 official non-working holidays according to Article 123 of the Labour Code of the Republic of Lithuania.
+ */
+export function getLithuanianHoliday(date) {
+    if (!date) return null;
+    const year = date.getFullYear();
+    if (isNaN(year)) return null;
+    return _getLithuanianYearHolidays(year).get(`${date.getMonth() + 1}-${date.getDate()}`) || null;
+}
+
+/**
+ * Checks if a given date is a weekend (Saturday = 6 or Sunday = 0).
+ */
+export function isWeekend(date) {
+    if (!date) return false;
+    const day = date.getDay();
+    return day === 0 || day === 6;
+}
+
+/**
+ * Calculates ISO 8601 week number (standard in Lithuania and Europe).
+ * Weeks start on Monday; Week 1 contains the first Thursday of the year.
+ */
+export function getISOWeekNumber(date) {
+    if (!date) return 1;
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+/**
+ * Format Date object to Odoo standard datetime string 'YYYY-MM-DD HH:mm:ss'
+ */
+export function formatOdooDateTime(date) {
+    if (!date) return "";
+    const d = new Date(date);
+    const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/**
+ * Human duration from minutes: "16 min", "1 val. 5 min", "2 d. 3 val.".
+ * Same rules as the backend: whole minutes, rounded UP, never below 1 minute when > 0.
+ */
+export function formatDurationMinutes(totalMin) {
+    let m = Math.max(0, Math.ceil((Number(totalMin) || 0) - 1e-9));
+    if (m < 60) return `${m} min`;
+    const days = Math.floor(m / 1440);
+    const rem = m % 1440;
+    const hours = Math.floor(rem / 60);
+    const mins = rem % 60;
+    const parts = [];
+    if (days) parts.push(`${days} d.`);
+    if (hours) parts.push(`${hours} val.`);
+    if (mins && !days) parts.push(`${mins} min`);
+    return parts.join(" ") || "0 min";
+}
+
+/**
+ * Compact allocated-hours label: "16 min", "8h", "1h 30min" (instead of "0.1h").
+ */
+export function formatHoursLabel(hours) {
+    const h = Number(hours) || 0;
+    if (h <= 0) return "";
+    const total = Math.max(1, Math.round(h * 60));
+    if (total < 60) return `${total} min`;
+    const hh = Math.floor(total / 60);
+    const mm = total % 60;
+    return mm === 0 ? `${hh}h` : `${hh}h ${mm}min`;
+}
+
+/**
+ * Parses labels produced by formatHoursLabel ("16 min", "8h", "1h 30min", legacy "0.1h") back to hours.
+ */
+export function parseHoursLabel(label) {
+    if (typeof label === "number") return label;
+    const s = String(label || "").trim();
+    if (!s) return 0;
+    let hours = 0;
+    const h = s.match(/(\d+(?:[.,]\d+)?)\s*h/i);
+    const m = s.match(/(\d+(?:[.,]\d+)?)\s*min/i);
+    if (h) hours += parseFloat(h[1].replace(",", "."));
+    if (m) hours += parseFloat(m[1].replace(",", ".")) / 60;
+    if (!h && !m) hours = parseFloat(s.replace(",", ".")) || 0;
+    return hours;
+}
+
+
+/**
+ * Default working hours schedule for Monday through Sunday.
+ * Active days: Monday-Friday (08:00 - 17:00, lunch 12:45 - 13:45).
+ * Inactive days: Saturday-Sunday.
+ */
+export const DEFAULT_WORKING_HOURS = {
+    1: { dayIndex: 1, name: "Pirmadienis", shortName: "I", active: true, start: "08:00", lunchStart: "12:45", lunchEnd: "13:45", end: "17:00" },
+    2: { dayIndex: 2, name: "Antradienis", shortName: "II", active: true, start: "08:00", lunchStart: "12:45", lunchEnd: "13:45", end: "17:00" },
+    3: { dayIndex: 3, name: "Trečiadienis", shortName: "III", active: true, start: "08:00", lunchStart: "12:45", lunchEnd: "13:45", end: "17:00" },
+    4: { dayIndex: 4, name: "Ketvirtadienis", shortName: "IV", active: true, start: "08:00", lunchStart: "12:45", lunchEnd: "13:45", end: "17:00" },
+    5: { dayIndex: 5, name: "Penktadienis", shortName: "V", active: true, start: "08:00", lunchStart: "12:45", lunchEnd: "13:45", end: "17:00" },
+    6: { dayIndex: 6, name: "Šeštadienis", shortName: "VI", active: false, start: "08:00", lunchStart: "12:45", lunchEnd: "13:45", end: "17:00" },
+    0: { dayIndex: 0, name: "Sekmadienis", shortName: "VII", active: false, start: "08:00", lunchStart: "12:45", lunchEnd: "13:45", end: "17:00" },
+};
+
+export const STORAGE_KEY_WORK_HOURS = "gannt_lt_working_hours_schedule_v2";
+
+/**
+ * Normalizes user input time string into 24-hour HH:mm format (e.g. "8" -> "08:00", "1245" -> "12:45").
+ */
+export function normalizeTimeInput(val, defaultVal = "08:00") {
+    if (!val || typeof val !== "string") return defaultVal;
+    let s = val.trim().replace(/[^\d:]/g, "");
+    if (!s) return defaultVal;
+
+    if (/^\d{1,2}$/.test(s)) {
+        let h = parseInt(s, 10);
+        if (h >= 0 && h <= 23) {
+            return `${h < 10 ? "0" + h : h}:00`;
+        }
+    }
+    if (/^\d{3,4}$/.test(s)) {
+        let h = parseInt(s.length === 3 ? s.slice(0, 1) : s.slice(0, 2), 10);
+        let m = parseInt(s.slice(-2), 10);
+        if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+            return `${h < 10 ? "0" + h : h}:${m < 10 ? "0" + m : m}`;
+        }
+    }
+    const match = s.match(/^(\d{1,2}):(\d{1,2})$/);
+    if (match) {
+        let h = parseInt(match[1], 10);
+        let m = parseInt(match[2], 10);
+        if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+            return `${h < 10 ? "0" + h : h}:${m < 10 ? "0" + m : m}`;
+        }
+    }
+    return defaultVal;
+}
+
+let _workingHoursCache = null;
+
+if (typeof window !== "undefined") {
+    window.addEventListener("storage", (ev) => {
+        if (!ev || !ev.key || ev.key === STORAGE_KEY_WORK_HOURS) {
+            _workingHoursCache = null;
+        }
+    });
+}
+
+function _parseTimeToMin(tStr, defVal) {
+    if (!tStr) return defVal;
+    const parts = String(tStr).split(":");
+    if (parts.length < 2) return defVal;
+    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+function _mergeWorkingHoursSchedule(parsed) {
+    const merged = {};
+    for (let i = 0; i <= 6; i++) {
+        merged[i] = Object.assign({}, DEFAULT_WORKING_HOURS[i], (parsed && parsed[i]) || {});
+    }
+    return merged;
+}
+
+function _setWorkingHoursCache(sched) {
+    _workingHoursCache = sched ? _mergeWorkingHoursSchedule(sched) : null;
+}
+
+export function getActiveWorkingHoursSchedule() {
+    if (_workingHoursCache) {
+        return _workingHoursCache;
+    }
+    try {
+        if (typeof window !== "undefined" && window.localStorage) {
+            const saved = window.localStorage.getItem(STORAGE_KEY_WORK_HOURS);
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed && typeof parsed === "object") {
+                    _workingHoursCache = _mergeWorkingHoursSchedule(parsed);
+                    return _workingHoursCache;
+                }
+            }
+        }
+    } catch {
+        // fallback
+    }
+    _workingHoursCache = DEFAULT_WORKING_HOURS;
+    return _workingHoursCache;
+}
+
+export function isWorkingDay(date, schedule = null, holidayKnown = undefined) {
+    if (!date) return false;
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return false;
+    const isHol = holidayKnown !== undefined ? Boolean(holidayKnown) : Boolean(getLithuanianHoliday(d));
+    if (isHol) return false;
+    const sched = schedule || getActiveWorkingHoursSchedule();
+    const cfg = sched ? sched[d.getDay()] : DEFAULT_WORKING_HOURS[d.getDay()];
+    return !!(cfg && cfg.active);
+}
+
+export function getIntervalWorkMinutes(date, stepMinutes = 0, schedule = null, holidayKnown = undefined) {
+    if (!date) return 0;
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return 0;
+    const isHol = holidayKnown !== undefined ? Boolean(holidayKnown) : Boolean(getLithuanianHoliday(d));
+    if (isHol) return 0;
+
+    const sched = schedule || getActiveWorkingHoursSchedule();
+    const cfg = sched ? sched[d.getDay()] : DEFAULT_WORKING_HOURS[d.getDay()];
+    if (!cfg || !cfg.active) return 0;
+
+    const step = stepMinutes > 0 ? stepMinutes : 1;
+    const startMin = d.getHours() * 60 + d.getMinutes();
+    const endMin = startMin + step;
+
+    const wStart = _parseTimeToMin(cfg.start, 480);
+    const wEnd = _parseTimeToMin(cfg.end, 1020);
+    const lStart = _parseTimeToMin(cfg.lunchStart, null);
+    const lEnd = _parseTimeToMin(cfg.lunchEnd, null);
+
+    const oStart = Math.max(startMin, wStart);
+    const oEnd = Math.min(endMin, wEnd);
+    if (oEnd <= oStart) return 0;
+
+    let workDuration = oEnd - oStart;
+
+    if (lStart !== null && lEnd !== null && lEnd > lStart) {
+        const loStart = Math.max(oStart, lStart);
+        const loEnd = Math.min(oEnd, lEnd);
+        if (loEnd > loStart) {
+            workDuration -= (loEnd - loStart);
+        }
+    }
+
+    return Math.max(0, workDuration);
+}
+
+export function isWorkingDateTime(date, schedule = null, stepMinutes = 0, holidayKnown = undefined) {
+    if (!date) return false;
+    const step = stepMinutes > 0 ? stepMinutes : 1;
+    const workMins = getIntervalWorkMinutes(date, step, schedule, holidayKnown);
+    if (step <= 1) {
+        return workMins > 0;
+    }
+    return workMins >= Math.ceil(step / 2);
+}
+
+/**
+ * Calculates actual working days and hours between start and end dates.
+ * Excludes weekends / inactive days and Lithuanian national holidays.
+ * Respects configured intra-day working hours and lunch break.
+ */
+export function calculateWorkingDaysAndHours(startDate, endDate, schedule = null) {
+    if (!startDate || !endDate) {
+        return { workDays: 0, workHours: 0, calendarDays: 0 };
+    }
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (isNaN(s.getTime()) || isNaN(e.getTime()) || s > e) {
+        return { workDays: 0, workHours: 0, calendarDays: 0 };
+    }
+
+    const sched = schedule || getActiveWorkingHoursSchedule();
+
+    // Determine calendar start day and end day
+    const startDay = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+    let endDay = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+
+    if (e.getHours() === 0 && e.getMinutes() === 0 && e.getSeconds() === 0 && endDay.getTime() > startDay.getTime()) {
+        endDay.setDate(endDay.getDate() - 1);
+    }
+
+    const isSingleDay = (s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth() && s.getDate() === e.getDate());
+
+    let totalWorkHours = 0;
+    let totalWorkDays = 0;
+    let totalCalendarDays = 0;
+    const curr = new Date(startDay);
+
+    while (curr <= endDay) {
+        totalCalendarDays++;
+        const dayOfWeek = curr.getDay();
+        const cfg = sched ? sched[dayOfWeek] : DEFAULT_WORKING_HOURS[dayOfWeek];
+
+        if (cfg && cfg.active && !getLithuanianHoliday(curr)) {
+            const startMin = _parseTimeToMin(cfg.start, 480);
+            const endMin = _parseTimeToMin(cfg.end, 1020);
+            const lunchStartMin = _parseTimeToMin(cfg.lunchStart, null);
+            const lunchEndMin = _parseTimeToMin(cfg.lunchEnd, null);
+
+            let lunchDurationHours = 0;
+            if (lunchStartMin !== null && lunchEndMin !== null && lunchEndMin > lunchStartMin) {
+                lunchDurationHours = (lunchEndMin - lunchStartMin) / 60;
+            }
+            const standardDayHours = Math.max(0, (endMin - startMin) / 60 - lunchDurationHours);
+
+            const dayWorkStart = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate(), Math.floor(startMin / 60), startMin % 60, 0);
+            const dayWorkEnd = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate(), Math.floor(endMin / 60), endMin % 60, 0);
+
+            if (isSingleDay) {
+                const isFullDayStd = (s <= dayWorkStart && e >= dayWorkEnd) || (s.getHours() === 0 && e.getHours() === 0);
+                if (isFullDayStd) {
+                    totalWorkHours += standardDayHours;
+                    totalWorkDays += 1;
+                } else {
+                    const actStart = s > dayWorkStart ? s : dayWorkStart;
+                    const actEnd = e < dayWorkEnd ? e : dayWorkEnd;
+                    if (actEnd > actStart) {
+                        let h = (actEnd.getTime() - actStart.getTime()) / 3600000;
+                        if (lunchDurationHours > 0) {
+                            const lStart = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate(), Math.floor(lunchStartMin / 60), lunchStartMin % 60, 0);
+                            const lEnd = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate(), Math.floor(lunchEndMin / 60), lunchEndMin % 60, 0);
+                            const oStart = actStart > lStart ? actStart : lStart;
+                            const oEnd = actEnd < lEnd ? actEnd : lEnd;
+                            if (oEnd > oStart) {
+                                h -= (oEnd.getTime() - oStart.getTime()) / 3600000;
+                            }
+                        }
+                        const roundedH = Math.round(Math.max(0, Math.min(standardDayHours, h)) * 100) / 100;
+                        totalWorkHours += roundedH;
+                        totalWorkDays += (roundedH >= standardDayHours ? 1 : Math.round((roundedH / (standardDayHours || 8)) * 10) / 10);
+                    }
+                }
+            } else if (curr.getTime() === startDay.getTime()) {
+                if (s <= dayWorkStart) {
+                    totalWorkHours += standardDayHours;
+                    totalWorkDays += 1;
+                } else {
+                    const actStart = s > dayWorkStart ? s : dayWorkStart;
+                    if (dayWorkEnd > actStart) {
+                        let h = (dayWorkEnd.getTime() - actStart.getTime()) / 3600000;
+                        if (lunchDurationHours > 0) {
+                            const lStart = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate(), Math.floor(lunchStartMin / 60), lunchStartMin % 60, 0);
+                            const lEnd = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate(), Math.floor(lunchEndMin / 60), lunchEndMin % 60, 0);
+                            const oStart = actStart > lStart ? actStart : lStart;
+                            const oEnd = dayWorkEnd < lEnd ? dayWorkEnd : lEnd;
+                            if (oEnd > oStart) {
+                                h -= (oEnd.getTime() - oStart.getTime()) / 3600000;
+                            }
+                        }
+                        const roundedH = Math.round(Math.max(0, Math.min(standardDayHours, h)) * 100) / 100;
+                        totalWorkHours += roundedH;
+                        totalWorkDays += Math.round((roundedH / (standardDayHours || 8)) * 10) / 10;
+                    }
+                }
+            } else if (curr.getTime() === endDay.getTime()) {
+                if (e >= dayWorkEnd) {
+                    totalWorkHours += standardDayHours;
+                    totalWorkDays += 1;
+                } else {
+                    const actEnd = e < dayWorkEnd ? e : dayWorkEnd;
+                    if (actEnd > dayWorkStart) {
+                        let h = (actEnd.getTime() - dayWorkStart.getTime()) / 3600000;
+                        if (lunchDurationHours > 0) {
+                            const lStart = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate(), Math.floor(lunchStartMin / 60), lunchStartMin % 60, 0);
+                            const lEnd = new Date(curr.getFullYear(), curr.getMonth(), curr.getDate(), Math.floor(lunchEndMin / 60), lunchEndMin % 60, 0);
+                            const oStart = dayWorkStart > lStart ? dayWorkStart : lStart;
+                            const oEnd = actEnd < lEnd ? actEnd : lEnd;
+                            if (oEnd > oStart) {
+                                h -= (oEnd.getTime() - oStart.getTime()) / 3600000;
+                            }
+                        }
+                        const roundedH = Math.round(Math.max(0, Math.min(standardDayHours, h)) * 100) / 100;
+                        totalWorkHours += roundedH;
+                        totalWorkDays += Math.round((roundedH / (standardDayHours || 8)) * 10) / 10;
+                    }
+                }
+            } else {
+                totalWorkHours += standardDayHours;
+                totalWorkDays += 1;
+            }
+        }
+        curr.setDate(curr.getDate() + 1);
+    }
+
+    const workHours = Math.round(totalWorkHours * 10) / 10;
+    const workDays = Math.round(totalWorkDays * 10) / 10;
+
+    return {
+        workDays,
+        workHours,
+        calendarDays: totalCalendarDays,
+    };
+}
+
+/**
+ * Computes standard business work dates (08:00:00 - 17:00:00) from Gantt grid dates.
+ * Gantt visual dates represent intervals [startDay 00:00:00, endDayBoundary 00:00:00).
+ * If endDayBoundary is at 00:00:00 and > startDay, the last active work day is endDayBoundary - 1 day.
+ * If start/end dates already contain specific intra-day hours (e.g. 10:00, 14:00), preserves them directly!
+ */
+export function computeWorkDates(startDate, endDate) {
+    if (!startDate || !endDate) {
+        const now = new Date();
+        const defStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0);
+        const defEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0, 0);
+        return { workStart: defStart, workEnd: defEnd };
+    }
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+        const now = new Date();
+        return {
+            workStart: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0),
+            workEnd: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0, 0),
+        };
+    }
+
+    // Preserve intra-day specific hours if already present
+    const hasSpecificHours = (s.getHours() !== 0 || s.getMinutes() !== 0 || (e.getHours() !== 0 && e.getHours() !== 23) || e.getMinutes() !== 0);
+    if (hasSpecificHours && s < e) {
+        return { workStart: new Date(s), workEnd: new Date(e) };
+    }
+
+    const workStart = new Date(s.getFullYear(), s.getMonth(), s.getDate(), 8, 0, 0);
+
+    let endDay = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+    // In Gantt half-open interval [start, end), if endDate is midnight (00:00:00) and after startDay,
+    // the task ended on the preceding calendar day.
+    if (e.getHours() === 0 && e.getMinutes() === 0 && e.getSeconds() === 0) {
+        const startDayMidnight = new Date(s.getFullYear(), s.getMonth(), s.getDate()).getTime();
+        if (endDay.getTime() > startDayMidnight) {
+            endDay.setDate(endDay.getDate() - 1);
+        }
+    }
+
+    let workEnd = new Date(endDay.getFullYear(), endDay.getMonth(), endDay.getDate(), 17, 0, 0);
+    if (workEnd.getTime() <= workStart.getTime()) {
+        workEnd = new Date(workStart.getFullYear(), workStart.getMonth(), workStart.getDate(), 17, 0, 0);
+    }
+
+    return { workStart, workEnd };
+}
+
+export function parseWorkDateStr(val) {
+    if (!val) return null;
+    if (val instanceof Date) return isNaN(val.getTime()) ? null : new Date(val);
+    const d = new Date(String(val).replace(/-/g, "/"));
+    return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Checks if a work interval has specific intra-day hours (not a standard full 08:00-17:00 workday).
+ */
+export function isIntraDayWorkSpan(workStartInput, workEndInput) {
+    const ws = parseWorkDateStr(workStartInput);
+    const we = parseWorkDateStr(workEndInput);
+    if (!ws || !we) return false;
+    const isStdStart = (ws.getHours() === 8 && ws.getMinutes() === 0) || (ws.getHours() === 0 && ws.getMinutes() === 0);
+    const isStdEnd = (we.getHours() === 17 && we.getMinutes() === 0) || (we.getHours() === 0 && we.getMinutes() === 0) || (we.getHours() === 23 && we.getMinutes() === 59);
+    return !(isStdStart && isStdEnd);
+}
+
+let _timelineViewportWidth = 1100;
+
+/**
+ * Remembers the current timeline viewport width (px) so grid helpers use the same
+ * pixel thresholds as the scale header (applyScaleConfig).
+ */
+export function setTimelineViewportWidth(width) {
+    const w = Number(width);
+    if (w > 0) {
+        _timelineViewportWidth = w;
+    }
+}
+
+/**
+ * True when the visible scale shows hour (or minute) columns, i.e. bars are positioned by real
+ * clock time. Uses the same threshold as the hour scale in applyScaleConfig (zoomLevel >= 50 && (pxPerHour * 2) >= 12),
+ * so snapping/positioning can never disagree with what the header shows.
+ */
+export function isExactTimeResolution(zoomLevel = 100, visibleWidth = _timelineViewportWidth) {
+    return (Number(zoomLevel) || 0) >= 50;
+}
+
+/**
+ * Returns grid snapping step in minutes for the given zoom level (0 - 100).
+ * Day-level scales: 1 day. Hour scale: 15 min. Minute scale: 1 min / 5 min / 15 min / 30 min.
+ */
+export function getGridStepMinutes(zoomLevel = 100) {
+    if (!isExactTimeResolution(zoomLevel)) return 1440; // 1 day
+    const pxPerMin = getZoomPxPerDay(zoomLevel, _timelineViewportWidth) / 1440.0;
+    if (zoomLevel >= 90 || pxPerMin >= 10) return 1;
+    if (zoomLevel >= 75 || (pxPerMin * 5) >= 9) return 5;
+    if (zoomLevel >= 65 || (pxPerMin * 15) >= 9) return 15;
+    if (zoomLevel >= 60 || (pxPerMin * 30) >= 9) return 30;
+    return 15;
+}
+
+/**
+ * Returns minimum allowable duration in ms for the given zoom level / task type.
+ * Intra-day tasks and minute/hourly views always support 1-minute minimum duration.
+ */
+export function getMinGridDurationMs(zoomLevel = 100, isIntraDay = false) {
+    if (isExactTimeResolution(zoomLevel) || isIntraDay) {
+        return 60 * 1000; // 1 minute
+    }
+    return 1440 * 60 * 1000; // 1 day
+}
+
+/**
+ * Cleanly snaps a date to the active grid step based on the zoom level.
+ */
+export function snapDateToGrid(date, zoomLevel = 100) {
+    if (!date) return date;
+    const d = new Date(date);
+    const stepMin = getGridStepMinutes(zoomLevel);
+
+    if (stepMin === 1) {
+        if (d.getSeconds() >= 30) {
+            d.setMinutes(d.getMinutes() + 1);
+        }
+        d.setSeconds(0, 0);
+        return d;
+    }
+    if (stepMin < 60) {
+        d.setSeconds(0, 0);
+        const m = d.getMinutes();
+        const snappedM = Math.round(m / stepMin) * stepMin;
+        d.setMinutes(snappedM);
+        return d;
+    }
+    if (stepMin === 60) {
+        d.setSeconds(0, 0);
+        const m = d.getMinutes();
+        if (m >= 30) d.setHours(d.getHours() + 1);
+        d.setMinutes(0);
+        return d;
+    }
+    // Day level (>= 1440): snap to nearest midnight
+    d.setSeconds(0, 0);
+    const h = d.getHours();
+    if (h >= 12) d.setDate(d.getDate() + 1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+/**
+ * Converts actual working dates (e.g. 2026-10-13 08:00:00 .. 2026-10-13 10:00:00)
+ * into visual DHTMLX Gantt coordinates [gridStart, gridEnd].
+ * - For zoom >= 250% (Hourly / Minute scales): uses exact timestamps.
+ * - For zoom < 250% (Daily / Weekly / Multi-year scales):
+ *   Maps the working day window [08:00..17:00] proportionally onto the 24-hour day column [00:00..24:00]
+ *   so sequential intra-day tasks/subtasks (e.g. 08:00-10:00, 10:00-13:00, 13:00-15:00, 15:00-17:00)
+ *   appear one after another instead of stacking as identical full-day bars!
+ */
+export function workDatesToVisualGrid(workStartInput, workEndInput, zoomLevel = 100) {
+    const ws = parseWorkDateStr(workStartInput);
+    const we = parseWorkDateStr(workEndInput);
+
+    if (!ws || !we) {
+        const now = new Date();
+        const defS = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        const defE = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+        return { gridStart: defS, gridEnd: defE, start: defS, end: defE };
+    }
+
+    if (isExactTimeResolution(zoomLevel)) {
+        const s = new Date(ws);
+        let e = new Date(we);
+        if (e.getTime() <= s.getTime()) {
+            const minMs = getMinGridDurationMs(zoomLevel);
+            e = new Date(s.getTime() + minMs);
+        }
+        return { gridStart: s, gridEnd: e, start: s, end: e };
+    }
+
+    const mapTimeOnDay = (dt, isEnd = false) => {
+        const dayMidnight = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 0, 0, 0);
+        const h = dt.getHours() + (dt.getMinutes() / 60.0) + (dt.getSeconds() / 3600.0);
+        if (!isEnd && h <= 8.0) {
+            return dayMidnight;
+        }
+        if (isEnd && (h >= 17.0 || (h === 0 && dt.getMinutes() === 0))) {
+            return new Date(dayMidnight.getTime() + 86400000);
+        }
+        const frac = Math.max(0.0, Math.min(1.0, (h - 8.0) / 9.0));
+        const offsetMs = Math.round(frac * 86400000);
+        return new Date(dayMidnight.getTime() + offsetMs);
+    };
+
+    const visStart = mapTimeOnDay(ws, false);
+    let visEnd = mapTimeOnDay(we, true);
+
+    if (visEnd.getTime() - visStart.getTime() < 5400000) {
+        const endDayBound = new Date(we.getFullYear(), we.getMonth(), we.getDate() + 1, 0, 0, 0);
+        if (visStart.getTime() + 5400000 <= endDayBound.getTime()) {
+            visEnd = new Date(visStart.getTime() + 5400000);
+        } else {
+            visEnd = endDayBound;
+        }
+    }
+
+    return { gridStart: visStart, gridEnd: visEnd, start: visStart, end: visEnd };
+}
+
+/**
+ * Inverse mapping from visual Gantt grid dates back to working dates (08:00-17:00) on drag/resize.
+ */
+export function visualGridToWorkDates(visStartInput, visEndInput, zoomLevel = 100, prevWorkStart = null, prevWorkEnd = null, mode = "move") {
+    const vs = new Date(visStartInput);
+    const ve = new Date(visEndInput);
+    if (isExactTimeResolution(zoomLevel)) {
+        vs.setSeconds(0, 0);
+        ve.setSeconds(0, 0);
+        const minMs = getMinGridDurationMs(zoomLevel);
+        if (ve.getTime() <= vs.getTime()) {
+            ve.setTime(vs.getTime() + minMs);
+        }
+        return { workStart: vs, workEnd: ve };
+    }
+
+    const wasSubDayTask = (typeof prevWorkStart === "boolean")
+        ? prevWorkStart
+        : isIntraDayWorkSpan(prevWorkStart, prevWorkEnd);
+
+    if (wasSubDayTask) {
+        const unmapTimeOnDay = (dt, isEnd = false) => {
+            const dayMidnight = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 0, 0, 0);
+            const elapsedMs = dt.getTime() - dayMidnight.getTime();
+            if (isEnd && elapsedMs === 0) {
+                const prevDay = new Date(dayMidnight.getTime() - 86400000);
+                return new Date(prevDay.getFullYear(), prevDay.getMonth(), prevDay.getDate(), 17, 0, 0);
+            }
+            const frac = Math.max(0.0, Math.min(1.0, elapsedMs / 86400000));
+            const workHourFloat = Math.round((8.0 + frac * 9.0) * 4) / 4;
+            const hours = Math.floor(workHourFloat);
+            const mins = Math.round((workHourFloat - hours) * 60);
+            return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), hours, mins, 0);
+        };
+        const ws = unmapTimeOnDay(vs, false);
+        let we = unmapTimeOnDay(ve, true);
+        if (we.getTime() <= ws.getTime()) {
+            we = new Date(ws.getTime() + 3600000);
+        }
+        return { workStart: ws, workEnd: we };
+    }
+
+    const roundToMidnight = (dt) => {
+        const d = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 0, 0, 0);
+        if (dt.getHours() >= 12) {
+            d.setDate(d.getDate() + 1);
+        }
+        return d;
+    };
+    const sMid = roundToMidnight(vs);
+    let eMid = roundToMidnight(ve);
+    if (eMid.getTime() <= sMid.getTime()) {
+        eMid = new Date(sMid.getTime() + 86400000);
+    }
+    return computeWorkDates(sMid, eMid);
+}
+
+export function addCalendarDays(date, n) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + n);
+    return d;
+}
+
+function withTimeOfDay(dayRef, todRef) {
+    const d = new Date(dayRef);
+    d.setHours(todRef.getHours(), todRef.getMinutes(), todRef.getSeconds(), 0);
+    return d;
+}
+
+/** Smallest valid end on the task's start day (keeps the end's time-of-day when possible). */
+function clampSameDayEnd(ws, we) {
+    let c = withTimeOfDay(ws, we);
+    if (c.getTime() > ws.getTime()) return c;
+    c = new Date(ws);
+    c.setHours(17, 0, 0, 0);
+    if (c.getTime() > ws.getTime()) return c;
+    return new Date(ws.getTime() + 3600000);
+}
+
+/** Latest valid start on the task's end day (keeps the start's time-of-day when possible). */
+function clampSameDayStart(ws, we) {
+    let c = withTimeOfDay(we, ws);
+    if (c.getTime() < we.getTime()) return c;
+    c = new Date(we);
+    c.setHours(8, 0, 0, 0);
+    if (c.getTime() < we.getTime()) return c;
+    return new Date(we.getTime() - 3600000);
+}
+
+/**
+ * Computes the new work dates of a dragged task directly in work-time (never by inverse-mapping the
+ * squeezed visual grid, which is lossy).
+ * - Hour/minute scales: bars are at real clock time; the dragged edge is snapped to the grid step.
+ * - Day-level scales: the pointer can only express whole days, so the result is original work dates
+ *   shifted by whole calendar days; time-of-day and duration are preserved exactly.
+ * - If the pointer did not move by at least half a grid step, nothing changes (no-op release).
+ */
+export function computeDragWorkDates({ mode, isStartHandle, origWS, origWE, origGS, origGE, rawStart, rawEnd, zoomLevel }) {
+    const unchanged = { workStart: new Date(origWS), workEnd: new Date(origWE), changed: false };
+    const minMs = 60 * 1000;
+
+    if (isExactTimeResolution(zoomLevel)) {
+        const stepMs = getGridStepMinutes(zoomLevel) * 60000;
+        if (mode === "move") {
+            if (Math.abs(rawStart.getTime() - origGS.getTime()) < stepMs / 2) return unchanged;
+            const ns = snapDateToGrid(rawStart, zoomLevel);
+            return { workStart: ns, workEnd: new Date(ns.getTime() + (origWE.getTime() - origWS.getTime())), changed: true };
+        }
+        if (isStartHandle) {
+            if (Math.abs(rawStart.getTime() - origGS.getTime()) < stepMs / 2) return unchanged;
+            let ns = snapDateToGrid(rawStart, zoomLevel);
+            if (origWE.getTime() - ns.getTime() < minMs) ns = new Date(origWE.getTime() - minMs);
+            return { workStart: ns, workEnd: new Date(origWE), changed: true };
+        }
+        if (Math.abs(rawEnd.getTime() - origGE.getTime()) < stepMs / 2) return unchanged;
+        let ne = snapDateToGrid(rawEnd, zoomLevel);
+        if (ne.getTime() - origWS.getTime() < minMs) ne = new Date(origWS.getTime() + minMs);
+        return { workStart: new Date(origWS), workEnd: ne, changed: true };
+    }
+
+    const DAY = 86400000;
+    if (mode === "move") {
+        const k = Math.round((rawStart.getTime() - origGS.getTime()) / DAY);
+        if (k === 0) return unchanged;
+        return { workStart: addCalendarDays(origWS, k), workEnd: addCalendarDays(origWE, k), changed: true };
+    }
+    if (isStartHandle) {
+        const k = Math.round((rawStart.getTime() - origGS.getTime()) / DAY);
+        if (k === 0) return unchanged;
+        let ns = addCalendarDays(origWS, k);
+        if (ns.getTime() >= origWE.getTime()) ns = clampSameDayStart(origWS, origWE);
+        return { workStart: ns, workEnd: new Date(origWE), changed: true };
+    }
+    const k = Math.round((rawEnd.getTime() - origGE.getTime()) / DAY);
+    if (k === 0) return unchanged;
+    let ne = addCalendarDays(origWE, k);
+    if (ne.getTime() <= origWS.getTime()) ne = clampSameDayEnd(origWS, origWE);
+    return { workStart: new Date(origWS), workEnd: ne, changed: true };
+}
+
+/**
+ * Scales a child's work span proportionally from the parent's original work span into the parent's
+ * new (shrunk) work span, entirely in work-time. Result always stays inside the new parent span.
+ */
+export function scaleWorkSpanIntoParent(cWS, cWE, pOrigWS, pOrigWE, pNewWS, pNewWE, roundMs = 60000) {
+    const pOrigDur = pOrigWE.getTime() - pOrigWS.getTime();
+    const pNewDur = pNewWE.getTime() - pNewWS.getTime();
+    if (pOrigDur <= 0 || pNewDur <= 0) {
+        return { workStart: new Date(cWS), workEnd: new Date(cWE) };
+    }
+    const clamp01 = (v) => Math.max(0, Math.min(1, v));
+    const fs = clamp01((cWS.getTime() - pOrigWS.getTime()) / pOrigDur);
+    const fe = clamp01((cWE.getTime() - pOrigWS.getTime()) / pOrigDur);
+    const rnd = (ms) => Math.round(ms / roundMs) * roundMs;
+    let ns = rnd(pNewWS.getTime() + fs * pNewDur);
+    let ne = rnd(pNewWS.getTime() + fe * pNewDur);
+    const pS = pNewWS.getTime();
+    const pE = pNewWE.getTime();
+    const minChild = Math.min(roundMs, pNewDur);
+    ns = Math.max(pS, Math.min(pE, ns));
+    ne = Math.max(pS, Math.min(pE, ne));
+    if (ne - ns < minChild) {
+        ne = Math.min(pE, ns + minChild);
+        ns = Math.max(pS, ne - minChild);
+    }
+    return { workStart: new Date(ns), workEnd: new Date(ne) };
+}
+
+export class GanntLTAction extends Component {
+    static template = "gannt_lt.GanntLTView";
+    static components = { Layout, SearchBar, CogMenu };
+    static props = {
+        ..._optionalizeProps(standardViewProps),
+        ..._optionalizeProps(standardActionServiceProps),
+    };
+
+    setup() {
+        this.orm = useService("orm");
+        this.actionService = useService("action");
+        this.notification = useService("notification");
+        this.root = useRef("root");
+        this.ganttElement = useRef("ganttElement");
+
+        if (this.env.searchModel) {
+            useSetupAction({ rootRef: this.root });
+            this.searchBarToggler = useSearchBarToggler();
+        }
+
+        const context = this.props.action?.context || this.props.context || {};
+        let defaultProjId = context.default_project_id || 0;
+        if (!defaultProjId && context.active_id && (this.props.resModel === "project.project" || context.active_model === "project.project")) {
+            defaultProjId = context.active_id;
+        }
+        if (!defaultProjId && this.props.domain && Array.isArray(this.props.domain)) {
+            for (const leaf of this.props.domain) {
+                if (Array.isArray(leaf) && leaf[0] === "project_id" && (leaf[1] === "=" || leaf[1] === "in")) {
+                    if (typeof leaf[2] === "number") {
+                        defaultProjId = leaf[2];
+                    } else if (Array.isArray(leaf[2]) && leaf[2].length === 1) {
+                        defaultProjId = leaf[2][0];
+                    }
+                }
+            }
+        }
+
+        // Only restore saved state when returning from a form dialog opened inside GanntLT;
+        // Upon reloading Odoo or newly entering Projects, always start at 0% scale with all items collapsed (Suskleisti).
+        let savedState = null;
+        try {
+            const raw = (typeof window !== "undefined" && window.localStorage && window.localStorage.getItem(TIMELINE_VIEW_STATE_KEY))
+                || sessionStorage.getItem(TIMELINE_VIEW_STATE_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === "object") {
+                    savedState = parsed;
+                }
+            }
+        } catch {}
+
+        let initialZoom = DEFAULT_OVERVIEW_ZOOM;
+        if (savedState && typeof savedState.zoomLevel === "number") {
+            initialZoom = Math.max(0, Math.min(100, Math.round(savedState.zoomLevel)));
+        }
+
+        let initialProjId = "active";
+        if (defaultProjId) {
+            initialProjId = String(defaultProjId);
+        } else if (savedState && savedState.selectedProjectId !== undefined && savedState.selectedProjectId !== null) {
+            initialProjId = String(savedState.selectedProjectId);
+        }
+
+        this._savedViewState = savedState;
+
+        this.state = useState({
+            selectedProjectId: initialProjId,
+            zoomLevel: initialZoom,
+            projects: [],
+            undoCount: 0,
+            canEdit: false,
+            canTrackTime: false,
+            hasMrp: false,
+            hasPurchase: false,
+            hasDelivery: false,
+            showWorkHoursDropdown: false,
+            workingHours: this.loadWorkingHoursSchedule(),
+        });
+
+        this.undoStack = [];
+        this._pendingUndoAction = null;
+        this.gantt = null;
+        window.__timeline_action = this;
+        this.eventIds = [];
+        this._isDestroyed = false;
+        this._trackedTimeouts = new Set();
+        this._trackedRAFs = new Set();
+        this._suppressLinkEvents = false;
+        this._initialScrollDone = false;
+        this._isExpandingRange = false;
+        this._zoomAnchorDate = null;
+        this._zoomAnchorOffset = null;
+        this._zoomResetTimer = null;
+        this._sidebarClickTimer = null;
+        this._wheelResetTimer = null;
+        this._currentHoveredTaskId = null;
+        this._hoverActiveElements = [];
+        this._verticalHighlightEl = null;
+        this._verticalScaleHighlightEl = null;
+        this.onMouseMoveHandler = null;
+        this.onMouseLeaveHandler = null;
+        this._resizeTimer = null;
+
+        this.onKeyDown = (e) => {
+            if ((e.key === "Escape" || e.key === "Esc") && this.state.showWorkHoursDropdown) {
+                this.closeWorkHoursDropdown();
+                return;
+            }
+            if (
+                e.target &&
+                (e.target.tagName === "INPUT" ||
+                    e.target.tagName === "TEXTAREA" ||
+                    e.target.tagName === "SELECT" ||
+                    e.target.isContentEditable)
+            ) {
+                return;
+            }
+            if (document.querySelector(".modal.show, .o_dialog")) {
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+                e.preventDefault();
+                this.undoAction();
+                return;
+            }
+            // Keyboard + and - keys to zoom in and out smoothly while keeping current timeline center
+            const isZoomInKey = (
+                e.key === "+" ||
+                e.key === "=" ||
+                e.code === "Equal" ||
+                e.code === "NumpadAdd"
+            );
+            const isZoomOutKey = (
+                e.key === "-" ||
+                e.key === "_" ||
+                e.code === "Minus" ||
+                e.code === "NumpadSubtract"
+            );
+            if (isZoomInKey || isZoomOutKey) {
+                e.preventDefault();
+                if (isZoomInKey) {
+                    this.zoomIn();
+                } else {
+                    this.zoomOut();
+                }
+            }
+        };
+        this.onWindowResize = () => {
+            this._clearTimeout(this._resizeTimer);
+            this._resizeTimer = this._setTimeout(() => {
+                this._resizeTimer = null;
+                if (this.gantt && this.ganttElement && this.ganttElement.el) {
+                    this.applyScaleConfig();
+                    this.gantt.render();
+                    this.renderTodayMarker();
+                }
+            }, 100);
+        };
+        window.addEventListener("resize", this.onWindowResize);
+        window.addEventListener("keydown", this.onKeyDown);
+        document.addEventListener("keydown", this.onKeyDown);
+
+        onWillStart(async () => {
+            if (typeof window.Gantt === "undefined" && typeof window.dhtmlxgantt === "undefined") {
+                await Promise.all([
+                    loadCSS("/GanntLT/static/src/vendor/dhtmlx_gantt/dhtmlxgantt.css"),
+                    loadJS("/GanntLT/static/src/vendor/dhtmlx_gantt/dhtmlxgantt.js"),
+                ]);
+            }
+        });
+
+        onMounted(async () => {
+            if (this._isDestroyed) return;
+            await this.initGantt();
+            if (this._isDestroyed || !this.gantt) return;
+            await this.loadTimelineData();
+        });
+
+        onWillUpdateProps(async (nextProps) => {
+            if (nextProps.domain && JSON.stringify(nextProps.domain) !== JSON.stringify(this.props.domain)) {
+                await this.loadTimelineData(nextProps.domain);
+            }
+        });
+
+        onWillUnmount(() => {
+            this.saveViewState();
+            this._isDestroyed = true;
+            if (this.onWindowResize) {
+                window.removeEventListener("resize", this.onWindowResize);
+                this.onWindowResize = null;
+            }
+            for (const tid of this._trackedTimeouts) {
+                clearTimeout(tid);
+            }
+            this._trackedTimeouts.clear();
+            for (const rafId of this._trackedRAFs) {
+                cancelAnimationFrame(rafId);
+            }
+            this._trackedRAFs.clear();
+            this._resizeTimer = null;
+            this._sidebarClickTimer = null;
+            this._zoomResetTimer = null;
+            this._wheelResetTimer = null;
+            if (this.onKeyDown) {
+                window.removeEventListener("keydown", this.onKeyDown);
+                document.removeEventListener("keydown", this.onKeyDown);
+                this.onKeyDown = null;
+            }
+            this.hideSnapGuide();
+            if (this.ganttElement && this.ganttElement.el) {
+                if (this.onGridDblClickHandler) {
+                    this.ganttElement.el.removeEventListener("dblclick", this.onGridDblClickHandler);
+                    this.onGridDblClickHandler = null;
+                }
+                if (this.onMouseDownHandler) {
+                    this.ganttElement.el.removeEventListener("mousedown", this.onMouseDownHandler);
+                    this.onMouseDownHandler = null;
+                }
+                if (this.onWheelHandler) {
+                    this.ganttElement.el.removeEventListener("wheel", this.onWheelHandler);
+                    this.onWheelHandler = null;
+                }
+                if (this.onMouseMoveHandler) {
+                    this.ganttElement.el.removeEventListener("mousemove", this.onMouseMoveHandler);
+                    this.onMouseMoveHandler = null;
+                }
+                if (this.onMouseLeaveHandler) {
+                    this.ganttElement.el.removeEventListener("mouseleave", this.onMouseLeaveHandler);
+                    this.onMouseLeaveHandler = null;
+                }
+            }
+            this.clearHoverHighlight();
+            this._verticalHighlightEl = null;
+            this._verticalScaleHighlightEl = null;
+            if (this.gantt) {
+                const ganttInstance = this.gantt;
+                if (this.eventIds && this.eventIds.length) {
+                    for (const id of this.eventIds) {
+                        try {
+                            ganttInstance.detachEvent(id);
+                        } catch {
+                            // ignore
+                        }
+                    }
+                    this.eventIds = [];
+                }
+                if (typeof ganttInstance.destructor === "function") {
+                    ganttInstance.destructor();
+                } else if (typeof ganttInstance.clearAll === "function") {
+                    ganttInstance.clearAll();
+                }
+                if (window.activeGantt === ganttInstance) {
+                    delete window.activeGantt;
+                }
+                this.gantt = null;
+            }
+            if (window.__timeline_action === this) {
+                delete window.__timeline_action;
+            }
+            if (window.activeGanttAction === this) {
+                delete window.activeGanttAction;
+            }
+        });
+    }
+
+    _setTimeout(fn, delay) {
+        let tid = null;
+        tid = setTimeout(() => {
+            this._trackedTimeouts.delete(tid);
+            if (!this._isDestroyed) {
+                fn();
+            }
+        }, delay);
+        this._trackedTimeouts.add(tid);
+        return tid;
+    }
+
+    _clearTimeout(tid) {
+        if (tid) {
+            clearTimeout(tid);
+            this._trackedTimeouts.delete(tid);
+        }
+    }
+
+    _requestAnimationFrame(fn) {
+        let rafId = null;
+        rafId = requestAnimationFrame((ts) => {
+            this._trackedRAFs.delete(rafId);
+            if (!this._isDestroyed) {
+                fn(ts);
+            }
+        });
+        this._trackedRAFs.add(rafId);
+        return rafId;
+    }
+
+    get canUndo() {
+        return this.state.canEdit && (this.state.undoCount || 0) > 0;
+    }
+
+    get workDaysList() {
+        const order = [1, 2, 3, 4, 5, 6, 0];
+        if (!this.state.workingHours) return [];
+        return order.map((idx) => this.state.workingHours[idx]).filter(Boolean);
+    }
+
+    toggleWorkHoursDropdown() {
+        this.state.showWorkHoursDropdown = !this.state.showWorkHoursDropdown;
+    }
+
+    closeWorkHoursDropdown() {
+        this.state.workingHours = this.loadWorkingHoursSchedule();
+        this.state.showWorkHoursDropdown = false;
+    }
+
+    onPopoverClick(ev) {
+        if (ev && typeof ev.stopPropagation === "function") {
+            ev.stopPropagation();
+        }
+    }
+
+    onTimeInputBlur(day, field, ev) {
+        if (!day || !field) return;
+        const inputVal = ev && ev.target ? ev.target.value : day[field];
+        const defVal = (field === "lunchStart" ? "12:45" : (field === "lunchEnd" ? "13:45" : (field === "end" ? "17:00" : "08:00")));
+        const normalized = normalizeTimeInput(inputVal, defVal);
+        day[field] = normalized;
+        if (ev && ev.target) {
+            ev.target.value = normalized;
+        }
+    }
+
+    applyWorkHoursToWeekdays() {
+        const mon = this.state.workingHours[1];
+        if (!mon) return;
+        for (const idx of [2, 3, 4, 5]) {
+            if (this.state.workingHours[idx]) {
+                this.state.workingHours[idx].active = mon.active;
+                this.state.workingHours[idx].start = mon.start;
+                this.state.workingHours[idx].lunchStart = mon.lunchStart;
+                this.state.workingHours[idx].lunchEnd = mon.lunchEnd;
+                this.state.workingHours[idx].end = mon.end;
+            }
+        }
+    }
+
+    resetDefaultWorkHours() {
+        this.state.workingHours = JSON.parse(JSON.stringify(DEFAULT_WORKING_HOURS));
+    }
+
+    saveWorkHours() {
+        this.saveWorkingHoursSchedule(this.state.workingHours);
+        this.state.showWorkHoursDropdown = false;
+        if (this.gantt) {
+            this.applyScaleConfig();
+            this.gantt.render();
+        }
+        if (this.notification) {
+            this.notification.add("Darbo valandų grafikas sėkmingai išsaugotas.", {
+                type: "success",
+            });
+        }
+    }
+
+    loadWorkingHoursSchedule() {
+        const cached = getActiveWorkingHoursSchedule();
+        return _mergeWorkingHoursSchedule(cached);
+    }
+
+    saveWorkingHoursSchedule(sched) {
+        _setWorkingHoursCache(sched);
+        try {
+            if (typeof window !== "undefined" && window.localStorage) {
+                window.localStorage.setItem(STORAGE_KEY_WORK_HOURS, JSON.stringify(sched));
+            }
+        } catch {
+            // ignore storage write failures (private browsing / quota)
+        }
+    }
+
+    isWorkingDateTime(date, stepMinutes = 0, holidayKnown = undefined) {
+        return isWorkingDateTime(date, this.state.workingHours, stepMinutes, holidayKnown);
+    }
+
+    isWorkingDay(date, holidayKnown = undefined) {
+        return isWorkingDay(date, this.state.workingHours, holidayKnown);
+    }
+
+    get display() {
+        return {
+            controlPanel: {},
+            ...this.props.display,
+        };
+    }
+
+    /**
+     * Save current timeline viewport (zoom level, project filter, center date, scroll positions, and open states)
+     * into sessionStorage when opening a form view so returning restores exact viewport.
+     */
+    saveViewState(fromFormNavigation = false) {
+        if (!this.gantt) return;
+        try {
+            const scroll = this.gantt.getScrollState ? this.gantt.getScrollState() : { x: 0, y: 0 };
+            const visWidth = this.getTimelineVisibleWidth();
+            let centerDate = null;
+            if (this.gantt.dateFromPos) {
+                const centerPx = scroll.x + Math.floor(visWidth / 2);
+                const d = this.gantt.dateFromPos(centerPx);
+                if (d && !isNaN(d.getTime())) {
+                    centerDate = d.getTime();
+                }
+            }
+            const openStates = {};
+            if (this.gantt.eachTask) {
+                this.gantt.eachTask((t) => {
+                    openStates[t.id] = Boolean(t.$open !== undefined ? t.$open : t.open);
+                });
+            }
+            const stateObj = {
+                fromFormNavigation: Boolean(fromFormNavigation),
+                zoomLevel: this.state.zoomLevel,
+                selectedProjectId: this.state.selectedProjectId,
+                scrollX: scroll.x,
+                scrollY: scroll.y,
+                centerDate: centerDate,
+                openStates: openStates,
+            };
+            if (typeof window !== "undefined" && window.localStorage) {
+                window.localStorage.setItem(TIMELINE_VIEW_STATE_KEY, JSON.stringify(stateObj));
+            }
+        } catch {}
+    }
+
+    _scheduleSaveViewState() {
+        if (this._isDestroyed) return;
+        this._clearTimeout(this._saveViewStateTimer);
+        this._saveViewStateTimer = this._setTimeout(() => {
+            this._saveViewStateTimer = null;
+            this.saveViewState();
+        }, 150);
+    }
+
+    hideTooltip() {
+        if (this.gantt && this.gantt.ext && this.gantt.ext.tooltips) {
+            try {
+                this.gantt.ext.tooltips.tooltip.hide();
+            } catch {}
+        }
+        const tips = document.querySelectorAll(".gantt_tooltip");
+        for (const tip of tips) {
+            tip.style.display = "none";
+        }
+    }
+
+    showSnapGuide(px) {
+        if (!this.ganttElement || !this.ganttElement.el) return;
+        const area = this.ganttElement.el.querySelector(".gantt_bars_area") || this.ganttElement.el.querySelector(".gantt_task_data");
+        if (!area) return;
+        let guide = area.querySelector(".gantt_magnetic_snap_line");
+        if (!guide) {
+            guide = document.createElement("div");
+            guide.className = "gantt_magnetic_snap_line";
+            area.appendChild(guide);
+        }
+        guide.style.display = "block";
+        guide.style.left = `${px}px`;
+    }
+
+    hideSnapGuide() {
+        if (!this.ganttElement || !this.ganttElement.el) return;
+        const guide = this.ganttElement.el.querySelector(".gantt_magnetic_snap_line");
+        if (guide) {
+            guide.style.display = "none";
+        }
+    }
+
+    /**
+     * Recursively scales all descendants proportionally when a parent task / milestone / project shrinks.
+     * Operates strictly in work-time using scaleWorkSpanIntoParent, preserving work duration integrity.
+     */
+    _applyScaleDescendants(parentId, pNewWS, pNewWE, pOrigWS, pOrigWE, isRealtime = false) {
+        const g = this.gantt;
+        if (!g) return;
+        const zoomLevel = this.state.zoomLevel;
+        const children = (typeof g.getChildren === "function" ? g.getChildren(parentId) : []) || [];
+        for (const cid of children) {
+            const ct = g.getTask(cid);
+            if (ct && ct._drag_ws_origin && ct._drag_we_origin) {
+                const scaled = scaleWorkSpanIntoParent(
+                    ct._drag_ws_origin,
+                    ct._drag_we_origin,
+                    pOrigWS,
+                    pOrigWE,
+                    pNewWS,
+                    pNewWE
+                );
+                ct.work_start_date = formatOdooDateTime(scaled.workStart);
+                ct.work_end_date = formatOdooDateTime(scaled.workEnd);
+                const { gridStart, gridEnd } = workDatesToVisualGrid(scaled.workStart, scaled.workEnd, zoomLevel);
+                ct.start_date = gridStart;
+                ct.end_date = gridEnd;
+                if (isRealtime) {
+                    g.refreshTask(cid);
+                } else {
+                    g.updateTask(cid);
+                }
+                this._applyScaleDescendants(cid, scaled.workStart, scaled.workEnd, ct._drag_ws_origin, ct._drag_we_origin, isRealtime);
+            }
+        }
+    }
+
+    /**
+     * Recursively restores all descendants to their pre-drag original dates (when parent is extended or restored).
+     */
+    _restoreDescendants(parentId, isRealtime = false) {
+        const g = this.gantt;
+        if (!g) return;
+        const zoomLevel = this.state.zoomLevel;
+        const children = (typeof g.getChildren === "function" ? g.getChildren(parentId) : []) || [];
+        for (const cid of children) {
+            const ct = g.getTask(cid);
+            if (ct && ct._drag_ws_origin && ct._drag_we_origin) {
+                ct.work_start_date = formatOdooDateTime(ct._drag_ws_origin);
+                ct.work_end_date = formatOdooDateTime(ct._drag_we_origin);
+                const { gridStart, gridEnd } = workDatesToVisualGrid(ct._drag_ws_origin, ct._drag_we_origin, zoomLevel);
+                ct.start_date = gridStart;
+                ct.end_date = gridEnd;
+                if (isRealtime) {
+                    g.refreshTask(cid);
+                } else {
+                    g.updateTask(cid);
+                }
+                this._restoreDescendants(cid, isRealtime);
+            }
+        }
+    }
+
+    /**
+     * Clears all hover highlight classes and vertical column highlights across both sidebar and timeline
+     */
+    clearHoverHighlight() {
+        this._currentHoveredTaskId = null;
+        if (this._hoverActiveElements && this._hoverActiveElements.length) {
+            for (const el of this._hoverActiveElements) {
+                el.classList.remove("gantt_hover_active", "gantt_hover_child");
+            }
+            this._hoverActiveElements = [];
+        }
+        if (this._verticalHighlightEl) {
+            this._verticalHighlightEl.style.display = "none";
+        }
+        if (this._verticalScaleHighlightEl) {
+            this._verticalScaleHighlightEl.style.display = "none";
+        }
+        if (this.ganttElement && this.ganttElement.el) {
+            const extra = this.ganttElement.el.querySelectorAll(".custom_hover_vertical_highlight, .custom_hover_vertical_scale_highlight");
+            for (const el of extra) {
+                el.style.display = "none";
+            }
+        }
+    }
+
+    /**
+     * Synchronously highlights the hovered parent task and all its expanded children
+     * across both the left sidebar grid and the right timeline data area, as well as
+     * rendering the vertical highlight for the length/span of the hovered task or project.
+     */
+    applyHoverHighlight(taskId) {
+        const g = this.gantt;
+        if (!g || !g.isTaskExists(taskId) || !this.ganttElement || !this.ganttElement.el) {
+            this.clearHoverHighlight();
+            return;
+        }
+
+        const rootEl = this.ganttElement.el;
+        const hoveredStr = String(taskId);
+
+        // Collect all expanded/visible descendants in JS only (no DOM queries per descendant)
+        const childIdSet = new Set();
+        const collectExpandedDescendants = (parentId) => {
+            if (!g.isTaskExists(parentId)) return;
+            const parent = g.getTask(parentId);
+            const isOpen = (parent.$open !== false && parent.open !== false);
+            if (!isOpen) return;
+
+            const children = (typeof g.getChildren === "function" ? g.getChildren(parentId) : []) || [];
+            for (const childId of children) {
+                childIdSet.add(String(childId));
+                collectExpandedDescendants(childId);
+            }
+        };
+        collectExpandedDescendants(taskId);
+
+        // Phase 1: DOM element lookup and layout metric READS (strictly before any class/style WRITES)
+        const primaryEls = [];
+        const childEls = [];
+        let taskEl = null;
+        const scanContainers = (g.$grid_data || g.$task_data)
+            ? [g.$grid_data, g.$task_data].filter(Boolean)
+            : [rootEl];
+
+        if (childIdSet.size > 0) {
+            for (const container of scanContainers) {
+                const candidates = container.querySelectorAll(
+                    ".gantt_row[task_id], .gantt_task_row[task_id], .gantt_task_line[task_id], .gantt_bar_task[task_id], .gantt_bar_task[data-task-id]"
+                );
+                for (const el of candidates) {
+                    const elId = el.getAttribute("task_id") || el.getAttribute("data-task-id");
+                    if (!elId) continue;
+                    if (elId === hoveredStr) {
+                        primaryEls.push(el);
+                        if (!taskEl && el.classList.contains("gantt_task_line")) {
+                            taskEl = el;
+                        }
+                    } else if (childIdSet.has(elId)) {
+                        childEls.push(el);
+                    }
+                }
+            }
+        } else {
+            const escaped = window.CSS && CSS.escape ? CSS.escape(hoveredStr) : hoveredStr.replace(/"/g, '\\"');
+            const selector =
+                `.gantt_row[task_id="${escaped}"], ` +
+                `.gantt_task_row[task_id="${escaped}"], ` +
+                `.gantt_task_line[task_id="${escaped}"], ` +
+                `.gantt_bar_task[task_id="${escaped}"], ` +
+                `.gantt_bar_task[data-task-id="${escaped}"]`;
+            for (const container of scanContainers) {
+                for (const el of container.querySelectorAll(selector)) {
+                    primaryEls.push(el);
+                    if (!taskEl && el.classList.contains("gantt_task_line")) {
+                        taskEl = el;
+                    }
+                }
+            }
+        }
+
+        let taskLeft = -1;
+        let taskWidth = 0;
+        if (taskEl) {
+            taskLeft = taskEl.offsetLeft;
+            taskWidth = taskEl.offsetWidth;
+        } else {
+            const task = g.getTask(taskId);
+            if (task && task.start_date && task.end_date) {
+                try {
+                    const sPx = this.safePosFromDate(task.start_date);
+                    const ePx = this.safePosFromDate(task.end_date);
+                    if (sPx >= 0 && ePx >= sPx) {
+                        taskLeft = sPx;
+                        taskWidth = Math.max(4, ePx - sPx);
+                    }
+                } catch {}
+            }
+        }
+
+        const dataArea = (taskLeft >= 0 && taskWidth > 0) ? rootEl.querySelector(".gantt_data_area") : null;
+        const scaleArea = (taskLeft >= 0 && taskWidth > 0) ? rootEl.querySelector(".gantt_task_scale") : null;
+        let totalHeight = 0;
+        if (dataArea) {
+            const contentEl = g.$task_bg || g.$task_data;
+            totalHeight = Math.max(dataArea.offsetHeight, contentEl ? contentEl.offsetHeight : dataArea.scrollHeight);
+        }
+
+        let vHighlight = dataArea ? (this._verticalHighlightEl || dataArea.querySelector(".custom_hover_vertical_highlight")) : null;
+        let vScaleHighlight = scaleArea ? (this._verticalScaleHighlightEl || scaleArea.querySelector(".custom_hover_vertical_scale_highlight")) : null;
+
+        // Phase 2: All DOM WRITES batched together (no interleaved layout reads)
+        if (this._hoverActiveElements && this._hoverActiveElements.length) {
+            for (const el of this._hoverActiveElements) {
+                el.classList.remove("gantt_hover_active", "gantt_hover_child");
+            }
+        }
+
+        this._currentHoveredTaskId = taskId;
+        for (const el of primaryEls) {
+            el.classList.add("gantt_hover_active");
+        }
+        for (const el of childEls) {
+            el.classList.add("gantt_hover_child");
+        }
+        this._hoverActiveElements = primaryEls.concat(childEls);
+
+        if (taskLeft >= 0 && taskWidth > 0) {
+            if (dataArea) {
+                if (!vHighlight) {
+                    vHighlight = document.createElement("div");
+                    vHighlight.className = "custom_hover_vertical_highlight";
+                    dataArea.appendChild(vHighlight);
+                }
+                vHighlight.style.left = `${taskLeft}px`;
+                vHighlight.style.width = `${taskWidth}px`;
+                vHighlight.style.height = `${totalHeight}px`;
+                vHighlight.style.display = "block";
+                this._verticalHighlightEl = vHighlight;
+            }
+            if (scaleArea) {
+                if (!vScaleHighlight) {
+                    vScaleHighlight = document.createElement("div");
+                    vScaleHighlight.className = "custom_hover_vertical_scale_highlight";
+                    scaleArea.appendChild(vScaleHighlight);
+                }
+                vScaleHighlight.style.left = `${taskLeft}px`;
+                vScaleHighlight.style.width = `${taskWidth}px`;
+                vScaleHighlight.style.height = "100%";
+                vScaleHighlight.style.display = "block";
+                this._verticalScaleHighlightEl = vScaleHighlight;
+            }
+        } else {
+            if (this._verticalHighlightEl) {
+                this._verticalHighlightEl.style.display = "none";
+            }
+            if (this._verticalScaleHighlightEl) {
+                this._verticalScaleHighlightEl.style.display = "none";
+            }
+        }
+    }
+
+    /**
+     * Initialize DHTMLX Gantt instance and event listeners
+     */
+    async initGantt() {
+        if (!window.Gantt && !window.dhtmlxgantt) {
+            if (this.notification) {
+                this.notification.add(_t("Nepavyko užkrauti DHTMLX Gantt bibliotekos."), { type: "danger" });
+            }
+            return;
+        }
+
+        // Get fresh isolated Gantt instance
+        this.gantt = window.Gantt ? window.Gantt.getGanttInstance() : window.gantt;
+
+        // Enable plugins
+        if (this.gantt.plugins) {
+            this.gantt.plugins({
+                marker: true,
+                tooltip: true,
+            });
+        }
+
+        const g = this.gantt;
+        window.activeGantt = this.gantt;
+        window.activeGanttAction = this;
+
+        // Configure Lithuanian locale safely without touching g.date functions
+        if (g.locale && g.locale.date) {
+            g.locale.date.month_full = LITHUANIAN_MONTHS;
+            g.locale.date.month_short = LITHUANIAN_MONTHS.map((m) => m.slice(0, 3));
+            g.locale.date.day_full = LITHUANIAN_WEEKDAYS;
+            g.locale.date.day_short = LITHUANIAN_WEEKDAYS_SHORT;
+        }
+
+        // Date formats & base config
+        g.config.date_format = "%Y-%m-%d %H:%i:%s";
+        g.config.row_height = 52;
+        g.config.bar_height = 34;
+        g.config.grid_resize = true;
+        g.config.grid_width = 440;
+        g.config.start_on_monday = true;
+        g.config.open_tree_init = false;
+        g.config.fit_tasks = false;
+        g.config.show_tasks_outside_timescale = true;
+        g.config.autoscroll = true;
+        g.config.autoscroll_speed = 30;
+        g.config.drag_links = Boolean(this.state.canEdit);
+        g.config.drag_progress = false;
+        g.config.drag_resize = Boolean(this.state.canEdit);
+        g.config.drag_move = Boolean(this.state.canEdit);
+        g.config.drag_project = Boolean(this.state.canEdit);
+        g.config.order_branch = false;
+        g.config.order_branch_free = false;
+        g.config.round_dnd_dates = false;
+        g.config.readonly = !this.state.canEdit;
+        g.config.tooltip_timeout = 250;
+        g.config.tooltip_hide_timeout = 30;
+        g.config.duration_unit = "minute";
+        g.config.duration_step = 1;
+        g.config.min_duration = 60 * 1000; // 1 minute
+        g.config.show_errors = false;
+
+        // Ensure parent tasks with children are treated as resizable tasks rather than un-resizable summary tasks
+        g.isSummaryTask = () => false;
+
+        // Columns in Left Tree Grid (Only Task and Assignee columns)
+        g.config.columns = [
+            {
+                name: "text",
+                label: _t("Užduotis / Task"),
+                tree: true,
+                width: 290,
+                resize: true,
+                template: (task) => {
+                    if (task.is_project) {
+                        const pStatus = task.last_update_status || "";
+                        let icon = "fa fa-folder-open text-primary";
+                        let customStyle = "";
+                        if (pStatus === "on_hold" || task.state === "04_on_hold" || task.state === "04_waiting_normal") {
+                            icon = "fa fa-circle";
+                            customStyle = "color: #00a09d;";
+                        } else if (pStatus === "on_track" || task.state === "03_on_track" || task.state === "03_approved") {
+                            icon = "fa fa-circle text-success";
+                        } else if (pStatus === "at_risk" || task.state === "02_at_risk" || task.state === "02_changes_requested") {
+                            icon = "fa fa-circle text-warning";
+                        } else if (pStatus === "off_track" || task.state === "1_off_track" || task.state === "1_canceled") {
+                            icon = "fa fa-circle text-danger";
+                        } else if (pStatus === "done" || task.is_done || task.state === "1_done") {
+                            icon = "fa fa-check-circle text-success";
+                        }
+                        const styleAttr = customStyle ? ` style="${customStyle}"` : "";
+                        const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Projektas vėluoja: suplanuota pabaiga praeityje, bet darbas nebaigtas")}"><i class="fa fa-fire text-white"></i></span>` : "";
+                        const infIcon = task.is_continuous ? `<span class="tree_continuous_badge" title="${_t("Tęstinis projektas be termino")}">∞</span>` : "";
+                        return `${fireIcon}${infIcon}<i class="${icon} me-1"${styleAttr}></i><b>${escapeHtml(task.text)}</b>`;
+                    }
+                    if (task.is_milestone) {
+                        const icon = (task.is_done || task.state === "1_done")
+                            ? "fa fa-check-circle text-success"
+                            : "fa fa-flag text-primary";
+                        const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Gairė vėluoja: pabaiga praeityje, bet darbas nebaigtas")}"><i class="fa fa-fire text-white"></i></span>` : "";
+                        return `${fireIcon}<i class="${icon} me-1"></i><b>${escapeHtml(task.text)}</b>`;
+                    }
+                    if (task.is_group) {
+                        return `<b>${escapeHtml(task.text)}</b>`;
+                    }
+                    if (task.is_po) {
+                        const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Pirkimo užsakymas vėluoja: numatytas pristatymas praeityje, bet prekės negautos")}"><i class="fa fa-fire text-white"></i></span>` : "";
+                        const icon = task.is_done
+                            ? "fa fa-check-circle text-success"
+                            : "fa fa-cube text-info";
+                        return `${fireIcon}<i class="${icon} me-1" title="${_t("Pirkimo užsakymas")}"></i>${escapeHtml(task.text)}`;
+                    }
+                    if (task.is_mo) {
+                        const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Gamybos užsakymas vėluoja: terminas praeityje, bet gamyba nebaigta")}"><i class="fa fa-fire text-white"></i></span>` : "";
+                        const icon = (task.is_done || task.state === "done")
+                            ? "fa fa-check-circle text-success"
+                            : "fa fa-cogs text-warning";
+                        return `${fireIcon}<i class="${icon} me-1" title="${_t("Gamybos užsakymas")}"></i>${escapeHtml(task.text)}`;
+                    }
+                    if (task.is_delivery) {
+                        const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Pristatymas vėluoja: terminas praeityje, bet nebaigta")}"><i class="fa fa-fire text-white"></i></span>` : "";
+                        const icon = (task.is_done || task.state === "done")
+                            ? "fa fa-check-circle text-success"
+                            : "fa fa-truck text-primary";
+                        return `${fireIcon}<i class="${icon} me-1" title="${_t("Pristatymo užsakymas")}"></i>${escapeHtml(task.text)}`;
+                    }
+                    const isSubtask = task.parent && typeof task.parent === "string" && task.parent.startsWith("task_");
+                    const subtaskBadge = isSubtask ? `<span class="subtask_tree_elbow text-muted me-1" title="${_t("Po-užduotis")}">↳</span>` : "";
+                    const isLocked = task.is_locked || task.state === "locked";
+                    let icon = "fa fa-tasks text-muted";
+                    let titleAttr = "";
+                    let extraIndicator = "";
+                    const showTimerState = Boolean(this.state.canTrackTime || this.state.canEdit);
+                    if (task.is_locked_by_other && showTimerState) {
+                        icon = "fa fa-lock text-warning";
+                        titleAttr = ` title="${_t("Užrakinta: vykdo ")}${escapeHtml(task.active_user_name || "")}"`;
+                        extraIndicator = ` <span class="badge bg-dark text-white ms-1 py-0 px-1" style="font-size: 9px;"><i class="fa fa-lock me-1"></i>${escapeHtml(task.active_user_name || "")}</span>`;
+                    } else if (task.is_timer_running && showTimerState) {
+                        icon = "fa fa-play text-success";
+                        titleAttr = ` title="${_t("Vykdoma: ")}${escapeHtml(task.active_user_name || "")}"`;
+                        extraIndicator = ` <span class="badge bg-success text-white ms-1 py-0 px-1" style="font-size: 9px;"><i class="fa fa-clock-o me-1"></i>${escapeHtml(task.active_user_name || _t("Vykdoma"))}</span>`;
+                    } else if (task.is_paused && showTimerState) {
+                        icon = "fa fa-pause text-warning";
+                        titleAttr = ` title="${_t("Pristabdyta")}${task.last_pause_reason ? ": " + escapeHtml(task.last_pause_reason) : ""}"`;
+                        extraIndicator = ` <span class="badge bg-warning text-dark ms-1 py-0 px-1" style="font-size: 9px;"><i class="fa fa-pause me-1"></i>${_t("Pristabdyta")}</span>`;
+                    } else if (isLocked) {
+                        icon = "fa fa-lock text-warning";
+                        titleAttr = ` title="${_t("Užrakinta užduotis (laukiama kitų užduočių)")}"`;
+                    } else if (task.is_done || task.state === "1_done") {
+                        icon = "fa fa-check-circle text-success";
+                    } else if (task.state === "03_approved") {
+                        icon = "fa fa-circle text-success";
+                    } else if (task.state === "02_changes_requested") {
+                        icon = "fa fa-exclamation-triangle text-warning";
+                    } else if (task.state === "1_canceled") {
+                        icon = "fa fa-times-circle text-danger";
+                    } else if (task.state === "04_waiting_normal" && isLocked) {
+                        icon = "fa fa-clock-o text-secondary";
+                    }
+
+                    const anchorIcon = task.has_been_approved ? `<i class="fa fa-anchor text-info me-1" title="${_t("Planas užrakintas po patvirtinimo")}"></i>` : "";
+                    const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Vėluoja: suplanuota pabaiga praeityje, bet darbas nebaigtas")}"><i class="fa fa-fire text-white"></i></span>` : "";
+                    const infIcon = task.is_continuous ? `<span class="tree_continuous_badge" title="${_t("Tęstinė užduotis be termino")}">∞</span>` : "";
+                    return `${subtaskBadge}${fireIcon}${infIcon}${anchorIcon}<i class="${icon} me-1"${titleAttr}></i>${escapeHtml(task.text)}${extraIndicator}`;
+                },
+            },
+            {
+                name: "assignees",
+                label: _t("Atsakingas"),
+                align: "left",
+                width: 150,
+                resize: true,
+                template: (task) => {
+                    if (task.assignee_avatars && task.assignee_avatars.length) {
+                        const avatarHtml = task.assignee_avatars
+                            .map((a) => `<img src="${escapeHtml(a.avatar)}" class="mini_avatar" title="${escapeHtml(a.name)}" alt="${escapeHtml(a.name)}"/>`)
+                            .join("");
+                        return `<div class="assignee_cell">${avatarHtml} <span class="assignee_name">${escapeHtml(task.assignees)}</span></div>`;
+                    }
+                    return `<span class="text-muted small">-</span>`;
+                },
+            },
+        ];
+
+        // Ensure quarter scale methods are explicitly defined on gantt.date
+        if (g.date) {
+            g.date.quarter_start = (date) => {
+                const a = g.date.month_start(date);
+                const s = a.getMonth();
+                const r = s >= 9 ? 9 : s >= 6 ? 6 : s >= 3 ? 3 : 0;
+                a.setMonth(r);
+                return a;
+            };
+            g.date.add_quarter = (date, inc) => {
+                return g.date.add(date, inc * 3, "month");
+            };
+        }
+
+        // Set default scale (Zoom-driven)
+        this.applyScaleConfig();
+
+        // Tree grid hierarchy connector lines (IDE-like vertical lines & elbows)
+        let currentIndentTaskId = null;
+        let indentStep = 0;
+        let cachedAncestors = [];
+
+        g.templates.grid_indent = (task) => {
+            if (!task) return `<div class="gantt_tree_indent"></div>`;
+            const level = task.$level || 0;
+            if (task.id !== currentIndentTaskId || indentStep >= level) {
+                currentIndentTaskId = task.id;
+                indentStep = 0;
+                cachedAncestors = [];
+                let cur = task;
+                while (cur && cur.parent && cur.parent !== 0 && cur.parent !== "0") {
+                    cachedAncestors.unshift(cur.id);
+                    cur = (typeof g.isTaskExists === "function" && g.isTaskExists(cur.parent)) ? g.getTask(cur.parent) : null;
+                }
+            }
+
+            const i = indentStep++;
+            if (i >= cachedAncestors.length) {
+                return `<div class="gantt_tree_indent"></div>`;
+            }
+
+            const ancId = cachedAncestors[i];
+            const ancTask = (typeof g.isTaskExists === "function" && g.isTaskExists(ancId)) ? g.getTask(ancId) : null;
+            if (!ancTask) {
+                return `<div class="gantt_tree_indent"></div>`;
+            }
+
+            const siblings = (typeof g.getChildren === "function" ? g.getChildren(ancTask.parent) : []) || [];
+            const isLast = siblings.length > 0 && (String(siblings[siblings.length - 1]) === String(ancId));
+            const isSelf = (i === cachedAncestors.length - 1);
+
+            let cls = "gantt_tree_indent";
+            if (isSelf) {
+                cls += isLast ? " gantt_tree_elbow_bottom" : " gantt_tree_elbow_tee";
+            } else {
+                cls += isLast ? " gantt_tree_line_blank" : " gantt_tree_line_through";
+            }
+
+            return `<div class="${cls}"></div>`;
+        };
+
+        // Rich Tooltip (Translated to Lithuanian)
+        g.templates.tooltip_date_format = (date) => {
+            if (!date) return "";
+            const d = new Date(date);
+            const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+            const m = LITHUANIAN_MONTHS_GENITIVE[d.getMonth()];
+            return `${d.getFullYear()} m. ${m} ${d.getDate()} d. ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+
+        g.templates.tooltip_text = (start, end, task) => {
+            let effStart, effEnd;
+            if (task.work_start_date && task.work_end_date && !task._is_dragged) {
+                effStart = new Date(task.work_start_date.replace(/-/g, "/"));
+                effEnd = new Date(task.work_end_date.replace(/-/g, "/"));
+            } else {
+                const computed = computeWorkDates(task.start_date || start, task.end_date || end);
+                effStart = computed.workStart;
+                effEnd = computed.workEnd;
+            }
+
+            const startStr = g.templates.tooltip_date_format(effStart);
+            const endStr = g.templates.tooltip_date_format(effEnd);
+            const isItemLocked = task.is_locked || task.state === "locked";
+            const percent = isItemLocked ? 0 : Math.round((task.progress || 0) * 100);
+            const { workDays, workHours, calendarDays } = calculateWorkingDaysAndHours(effStart, effEnd, this.state.workingHours);
+            // Durations are always shown in minutes / hours / days (never "0.1h"); minutes are rounded UP, min 1.
+            const spanMin = Math.max(1, Math.ceil((effEnd.getTime() - effStart.getTime()) / 60000));
+            const durationText = formatDurationMinutes(spanMin);
+            const formatWorkHoursOnly = (hoursVal) => {
+                const totalMin = Math.round((Number(hoursVal) || 0) * 60);
+                if (totalMin <= 0) return "0 min";
+                const h = Math.floor(totalMin / 60);
+                const m = totalMin % 60;
+                if (h > 0 && m > 0) return `${h} val. ${m} min.`;
+                if (h > 0) return `${h} val.`;
+                return `${m} min.`;
+            };
+            const workText = formatWorkHoursOnly(workHours);
+            const timerSec = Number(task.timer_total_seconds) || 0;
+            const timerRowHtml = timerSec > 0
+                ? `<div class="tooltip_row"><span class="tooltip_label">Laikmatis:</span> <span class="tooltip_val">${formatDurationMinutes(Math.ceil(timerSec / 60))}</span></div>`
+                : "";
+
+            let deadlineHtml = "";
+            let dlDate = null;
+            if (task.has_deadline_delay && task.deadline_end) {
+                // Red tail: planned end -> deadline (or live "now" for a running timer)
+                dlDate = task.deadline_end instanceof Date ? task.deadline_end : new Date(String(task.deadline_end).replace(/-/g, "/"));
+                if (isNaN(dlDate.getTime())) dlDate = null;
+                if (dlDate) {
+                    const dlFormatted = g.templates.tooltip_date_format(dlDate);
+                    const dlLabel = task.delay_kind === "timer" ? "Dabar (laikmatis veikia):" : "Terminas / faktinė pabaiga:";
+                    deadlineHtml += `<div class="tooltip_row tooltip_deadline_row"><span class="tooltip_label">${dlLabel}</span> <span class="tooltip_val">${dlFormatted}</span></div>`;
+                }
+            } else if (task.date_deadline) {
+                const d = new Date(String(task.date_deadline).replace(/-/g, "/"));
+                if (!isNaN(d.getTime())) {
+                    dlDate = d;
+                    const sameAsPlannedEnd = effEnd && Math.abs(d.getTime() - effEnd.getTime()) < 60000;
+                    if (!task.is_po && !task.is_mo && !task.is_delivery && !sameAsPlannedEnd) {
+                        deadlineHtml += `<div class="tooltip_row tooltip_deadline_row"><span class="tooltip_label">Terminas:</span> <span class="tooltip_val">${g.templates.tooltip_date_format(d)}</span></div>`;
+                    }
+                }
+            }
+            if (task.has_deadline_delay) {
+                let delayMin = Number(task.delay_minutes) || 0;
+                if (!delayMin && dlDate && effEnd && dlDate > effEnd) {
+                    delayMin = Math.max(1, Math.ceil((dlDate.getTime() - effEnd.getTime()) / 60000));
+                }
+                const delayStr = delayMin > 0 ? `+${formatDurationMinutes(delayMin)}` : "+!";
+                const liveTag = task.delay_kind === "timer" ? " (vyksta)" : "";
+                deadlineHtml += `<div class="tooltip_row tooltip_delay_row"><span class="tooltip_label">Vėlavimas:</span> <span class="tooltip_val text-danger fw-bold">${delayStr}${liveTag}</span></div>`;
+            }
+            if (task.has_early_finish && !task.has_deadline_delay && task.early_minutes > 0) {
+                if (task.actual_finish_date) {
+                    const actD = task.actual_finish_date instanceof Date ? task.actual_finish_date : new Date(String(task.actual_finish_date).replace(/-/g, "/"));
+                    if (!isNaN(actD.getTime())) {
+                        deadlineHtml += `<div class="tooltip_row tooltip_early_row"><span class="tooltip_label">Faktinė pabaiga:</span> <span class="tooltip_val">${g.templates.tooltip_date_format(actD)}</span></div>`;
+                    }
+                }
+                const earlyStr = `-${formatDurationMinutes(task.early_minutes)}`;
+                deadlineHtml += `<div class="tooltip_row tooltip_early_row"><span class="tooltip_label">Atlikta anksčiau:</span> <span class="tooltip_val text-success fw-bold">${earlyStr}</span></div>`;
+            }
+            if (task.is_overdue_past && !task.is_continuous && !task.is_done && task.delay_kind !== "timer") {
+                const todayRef = new Date();
+                if (this.state.zoomLevel < 60) {
+                    todayRef.setHours(12, 0, 0, 0);
+                }
+                const refEnd = (task.has_deadline_delay && dlDate && effEnd && dlDate > effEnd) ? dlDate : effEnd;
+                if (refEnd && todayRef > refEnd) {
+                    const overdueMin = Math.max(1, Math.ceil((todayRef.getTime() - refEnd.getTime()) / 60000));
+                    const overdueStr = `+${formatDurationMinutes(overdueMin)}`;
+                    deadlineHtml += `<div class="tooltip_row tooltip_delay_row"><span class="tooltip_label">Vėlavimas iki šiandien:</span> <span class="tooltip_val text-danger fw-bold"><i class="fa fa-exclamation-triangle me-1"></i>${overdueStr}</span></div>`;
+                }
+            }
+            const getStatusBadge = (t) => {
+                if (t.is_project) {
+                    const pStatus = t.last_update_status || "";
+                    if (pStatus === "on_hold" || t.state === "04_on_hold" || t.state === "04_waiting_normal") {
+                        return `<span style="color: #00827f; font-weight: 700;"><i class="fa fa-circle me-1" style="color: #00a09d;"></i>Sustabdytas (On Hold)</span>`;
+                    }
+                    if (pStatus === "on_track" || t.state === "03_on_track" || t.state === "03_approved") {
+                        return `<span style="color: #059669; font-weight: 700;"><i class="fa fa-circle text-success me-1"></i>Pagal planą (On Track)</span>`;
+                    }
+                    if (pStatus === "at_risk" || t.state === "02_at_risk" || t.state === "02_changes_requested") {
+                        return `<span style="color: #d97706; font-weight: 700;"><i class="fa fa-circle text-warning me-1"></i>Rizikingas (At Risk)</span>`;
+                    }
+                    if (pStatus === "off_track" || t.state === "1_off_track" || t.state === "1_canceled") {
+                        return `<span style="color: #dc2626; font-weight: 700;"><i class="fa fa-circle text-danger me-1"></i>Vėluojantis (Off Track)</span>`;
+                    }
+                    if (pStatus === "done" || t.is_done || t.state === "1_done") {
+                        return `<span style="color: #16a34a; font-weight: 700;"><i class="fa fa-check-circle text-success me-1"></i>Užbaigtas (Complete)</span>`;
+                    }
+                    if (t.state === "03_approved") {
+                        return `<span style="color: #059669; font-weight: 700;"><i class="fa fa-circle text-success me-1"></i>Patvirtinta</span>`;
+                    }
+                    if (t.state === "02_changes_requested") {
+                        return `<span style="color: #d97706; font-weight: 700;"><i class="fa fa-exclamation-triangle text-warning me-1"></i>Koregavimas</span>`;
+                    }
+                    if (t.state === "1_canceled") {
+                        return `<span style="color: #dc2626; font-weight: 700;"><i class="fa fa-times-circle text-danger me-1"></i>Atšaukta</span>`;
+                    }
+                    return `<span style="color: #5f5285; font-weight: 700;"><i class="fa fa-folder-open text-primary me-1"></i>Vykdomas</span>`;
+                }
+
+                if (t.is_milestone) {
+                    if (t.is_done || t.state === "1_done") {
+                        return `<span style="color: #16a34a; font-weight: 700;"><i class="fa fa-check-circle text-success me-1"></i>Pasiekta (Achieved)</span>`;
+                    }
+                    return `<span style="color: #2563eb; font-weight: 700;"><i class="fa fa-flag text-primary me-1"></i>Vykdoma (In Progress)</span>`;
+                }
+
+                // Task / Subtask
+                if (t.is_locked || t.state === "locked") {
+                    return `<span style="color: #cbd5e1; background: #1e293b; padding: 2px 7px; border-radius: 4px; border: 1px solid #475569; font-weight: 700;"><i class="fa fa-lock text-warning me-1"></i>Užrakinta / Laukiama</span>`;
+                }
+                const state = t.state || (t.is_done ? "1_done" : "01_in_progress");
+                if (state === "1_done" || t.is_done) {
+                    return `<span style="color: #16a34a; font-weight: 700;"><i class="fa fa-check-circle text-success me-1"></i>Atlikta (Done)</span>`;
+                }
+                if (state === "03_approved") {
+                    return `<span style="color: #059669; font-weight: 700;"><i class="fa fa-circle text-success me-1"></i>Patvirtinta (Approved)</span>`;
+                }
+                if (state === "02_changes_requested") {
+                    return `<span style="color: #d97706; font-weight: 700;"><i class="fa fa-exclamation-triangle text-warning me-1"></i>Koregavimas (Changes Requested)</span>`;
+                }
+                if (state === "1_canceled") {
+                    return `<span style="color: #dc2626; font-weight: 700;"><i class="fa fa-times-circle text-danger me-1"></i>Atšaukta (Canceled)</span>`;
+                }
+                if (state === "04_waiting_normal" && (t.is_locked || t.state === "locked")) {
+                    return `<span style="color: #64748b; font-weight: 700;"><i class="fa fa-clock-o text-secondary me-1"></i>Laukiama (Waiting)</span>`;
+                }
+                return `<span style="color: #71639e; font-weight: 700;"><i class="fa fa-tasks me-1" style="color: #71639e;"></i>Vykdoma (In Progress)</span>`;
+            };
+
+            if (task.is_milestone) {
+                const statusHtml = getStatusBadge(task);
+                return `
+                    <div class="gantt_tooltip_inner">
+                        <div class="tooltip_title"><i class="fa fa-flag text-primary me-1"></i>${escapeHtml(task.text)}</div>
+                        <div class="tooltip_row"><span class="tooltip_label">Tipas:</span> <span class="tooltip_val">Projekto gairė</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Būsena:</span> <span class="tooltip_val">${statusHtml}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Projektas:</span> <span class="tooltip_val">${escapeHtml(task.project_name || "-")}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Pradžia:</span> <span class="tooltip_val">${startStr}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Pabaiga:</span> <span class="tooltip_val">${endStr}</span></div>
+                        ${deadlineHtml}
+                        <div class="tooltip_row"><span class="tooltip_label">Trukmė:</span> <span class="tooltip_val">${durationText}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Darbo dienos:</span> <span class="tooltip_val"><b>${workDays} d.</b></span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Darbo valandos:</span> <span class="tooltip_val"><b>${workText}</b></span></div>
+                        ${task.task_count !== undefined ? `<div class="tooltip_row"><span class="tooltip_label">Užduotys:</span> <span class="tooltip_val">${Number(task.done_task_count) || 0} / ${Number(task.task_count) || 0}</span></div>` : ""}
+                        <div class="tooltip_progress_bar">
+                            <div class="tooltip_progress_fill" style="width: ${percent}%;"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (task.is_project) {
+                const statusHtml = getStatusBadge(task);
+                return `
+                    <div class="gantt_tooltip_inner">
+                        <div class="tooltip_title"><i class="fa fa-folder-open text-primary me-1"></i>${escapeHtml(task.text)}</div>
+                        <div class="tooltip_row"><span class="tooltip_label">Tipas:</span> <span class="tooltip_val">Projektas</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Būsena:</span> <span class="tooltip_val">${statusHtml}</span></div>
+                        ${task.stage_name ? `<div class="tooltip_row"><span class="tooltip_label">Etapas:</span> <span class="tooltip_val">${escapeHtml(task.stage_name)}</span></div>` : ""}
+                        <div class="tooltip_row"><span class="tooltip_label">Pradžia:</span> <span class="tooltip_val">${startStr}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Pabaiga:</span> <span class="tooltip_val">${endStr}</span></div>
+                        ${deadlineHtml}
+                        <div class="tooltip_row"><span class="tooltip_label">Trukmė:</span> <span class="tooltip_val">${durationText}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Darbo dienos:</span> <span class="tooltip_val"><b>${workDays} d.</b></span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Darbo valandos:</span> <span class="tooltip_val"><b>${workText}</b></span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Atsakingas:</span> <span class="tooltip_val">${escapeHtml(task.assignees || "-")}</span></div>
+                        ${task.allocated_hours ? `<div class="tooltip_row"><span class="tooltip_label">Planuotos val.:</span> <span class="tooltip_val">${escapeHtml(task.allocated_hours)}</span></div>` : ""}
+                        <div class="tooltip_progress_bar">
+                            <div class="tooltip_progress_fill" style="width: ${percent}%;"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (task.is_group) {
+                return `
+                    <div class="gantt_tooltip_inner">
+                        <div class="tooltip_title">${escapeHtml(task.text)}</div>
+                        <div class="tooltip_row"><span class="tooltip_label">Tipas:</span> <span class="tooltip_val">Skyriaus grupė</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Projektas:</span> <span class="tooltip_val">${escapeHtml(task.project_name || "-")}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Pradžia:</span> <span class="tooltip_val">${startStr}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Pabaiga:</span> <span class="tooltip_val">${endStr}</span></div>
+                    </div>
+                `;
+            }
+
+            if (task.is_po) {
+                return `
+                    <div class="gantt_tooltip_inner">
+                        <div class="tooltip_title"><i class="fa fa-cube text-info me-1"></i>${escapeHtml(task.text)}</div>
+                        <div class="tooltip_row"><span class="tooltip_label">Tipas:</span> <span class="tooltip_val">Pirkimo užsakymas (PO)</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Būsena:</span> <span class="tooltip_val">${task.is_done ? '<span class="text-success fw-bold">Gauta / Patvirtinta</span>' : '<span class="text-info fw-bold">Užsakyta / Vykdoma</span>'}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Projektas:</span> <span class="tooltip_val">${escapeHtml(task.project_name || "-")}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Užsakymo data:</span> <span class="tooltip_val">${startStr}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Planuotas pristatymas:</span> <span class="tooltip_val">${endStr}</span></div>
+                        ${deadlineHtml}
+                        ${task.assignees ? `<div class="tooltip_row"><span class="tooltip_label">Pirkėjas:</span> <span class="tooltip_val">${escapeHtml(task.assignees)}</span></div>` : ""}
+                    </div>
+                `;
+            }
+
+            if (task.is_mo) {
+                return `
+                    <div class="gantt_tooltip_inner">
+                        <div class="tooltip_title"><i class="fa fa-cogs text-warning me-1"></i>${escapeHtml(task.text)}</div>
+                        <div class="tooltip_row"><span class="tooltip_label">Tipas:</span> <span class="tooltip_val">Gamybos užsakymas (MO)</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Būsena:</span> <span class="tooltip_val">${task.is_done ? '<span class="text-success fw-bold">Pagaminta (Done)</span>' : '<span class="text-warning fw-bold">Gamyboje (In Progress)</span>'}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Projektas:</span> <span class="tooltip_val">${escapeHtml(task.project_name || "-")}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Gamybos pradžia:</span> <span class="tooltip_val">${startStr}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Gamybos pabaiga:</span> <span class="tooltip_val">${endStr}</span></div>
+                        ${deadlineHtml}
+                        ${task.assignees ? `<div class="tooltip_row"><span class="tooltip_label">Atsakingas:</span> <span class="tooltip_val">${escapeHtml(task.assignees)}</span></div>` : ""}
+                    </div>
+                `;
+            }
+
+            if (task.is_delivery) {
+                return `
+                    <div class="gantt_tooltip_inner">
+                        <div class="tooltip_title"><i class="fa fa-truck text-primary me-1"></i>${escapeHtml(task.text)}</div>
+                        <div class="tooltip_row"><span class="tooltip_label">Tipas:</span> <span class="tooltip_val">Pristatymas klientui (DO)</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Būsena:</span> <span class="tooltip_val">${task.is_done ? '<span class="text-success fw-bold">Pristatyta (Done)</span>' : '<span class="text-primary fw-bold">Suplanuota</span>'}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Projektas:</span> <span class="tooltip_val">${escapeHtml(task.project_name || "-")}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Planuota data:</span> <span class="tooltip_val">${startStr}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Terminas:</span> <span class="tooltip_val">${endStr}</span></div>
+                        ${deadlineHtml}
+                    </div>
+                `;
+            }
+
+            const isSubtask = task.parent && typeof task.parent === "string" && task.parent.startsWith("task_");
+            const typeLabel = isSubtask ? "Po-užduotis" : "Užduotis";
+            const taskStatusHtml = getStatusBadge(task);
+            const isTaskLocked = task.is_locked || task.state === "locked";
+            const hasTaskDates = task.has_dates !== false && (task.has_dates || task.has_deadline || task.planned_date_start || task.planned_date_end || task.date_deadline || task._is_dragged);
+
+            return `
+                <div class="gantt_tooltip_inner">
+                    <div class="tooltip_title"><i class="${isTaskLocked ? "fa fa-lock text-warning" : "fa fa-tasks text-primary"} me-1"></i>${escapeHtml(task.text)}</div>
+                    <div class="tooltip_row"><span class="tooltip_label">Tipas:</span> <span class="tooltip_val">${typeLabel}</span></div>
+                    <div class="tooltip_row"><span class="tooltip_label">Būsena:</span> <span class="tooltip_val">${taskStatusHtml}</span></div>
+                    ${task.is_locked_by_other ? `
+                        <div class="tooltip_row" style="background: #1e293b; color: #f8fafc; padding: 3px 6px; border-radius: 4px; border-left: 2px solid #f59e0b;">
+                            <span class="tooltip_label" style="color: #cbd5e1;"><i class="fa fa-lock text-warning me-1"></i>Užrakinta:</span>
+                            <span class="tooltip_val text-warning fw-bold">Vykdo ${escapeHtml(task.active_user_name || "")}</span>
+                        </div>
+                    ` : ""}
+                    ${task.is_timer_running ? `
+                        <div class="tooltip_row" style="background: #ecfdf5; padding: 3px 6px; border-radius: 4px; border-left: 2px solid #059669;">
+                            <span class="tooltip_label" style="color: #047857;"><i class="fa fa-play text-success me-1"></i>Aktyviai vykdo:</span>
+                            <span class="tooltip_val text-success fw-bold">${escapeHtml(task.active_user_name || _t("Vykdoma"))}</span>
+                        </div>
+                    ` : ""}
+                    ${task.is_paused ? `
+                        <div class="tooltip_row" style="background: #fffbeb; padding: 3px 6px; border-radius: 4px; border-left: 2px solid #d97706;">
+                            <span class="tooltip_label" style="color: #b45309;"><i class="fa fa-pause text-warning me-1"></i>Pristabdyta:</span>
+                            <span class="tooltip_val text-warning fw-bold">${escapeHtml(task.last_pause_reason || _t("Pristabdyta"))} ${task.active_user_name ? '(' + escapeHtml(task.active_user_name) + ')' : ''}</span>
+                        </div>
+                    ` : ""}
+                    ${task.has_been_approved ? `
+                        <div class="tooltip_row" style="background: #f0f9ff; padding: 3px 6px; border-radius: 4px; border-left: 2px solid #0284c7;">
+                            <span class="tooltip_label" style="color: #0369a1;"><i class="fa fa-anchor text-info me-1"></i>Planas užfiksuotas:</span>
+                            <span class="tooltip_val text-info fw-bold">${escapeHtml(task.approved_baseline_duration || 0)} val.</span>
+                        </div>
+                    ` : ""}
+                    ${isTaskLocked && task.blocking_tasks ? `
+                        <div class="tooltip_row" style="color: #f59e0b; font-weight: 600;">
+                            <span class="tooltip_label" style="color: #f59e0b;"><i class="fa fa-lock me-1"></i>Blokuoja:</span>
+                            <span class="tooltip_val" style="color: #f59e0b;">${escapeHtml(task.blocking_tasks)}</span>
+                        </div>
+                    ` : ""}
+                    ${task.stage_name ? `<div class="tooltip_row"><span class="tooltip_label">Etapas:</span> <span class="tooltip_val">${escapeHtml(task.stage_name)}</span></div>` : ""}
+                    <div class="tooltip_row"><span class="tooltip_label">Projektas:</span> <span class="tooltip_val">${escapeHtml(task.project_name || "-")}</span></div>
+                    ${task.milestone_name ? `<div class="tooltip_row"><span class="tooltip_label">Gairė:</span> <span class="tooltip_val">${escapeHtml(task.milestone_name)}</span></div>` : ""}
+                    ${hasTaskDates ? `
+                        <div class="tooltip_row"><span class="tooltip_label">Pradžia:</span> <span class="tooltip_val">${startStr}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">${task.is_continuous ? "Iki šiandien:" : "Pabaiga:"}</span> <span class="tooltip_val">${endStr}</span></div>
+                        ${task.is_continuous ? `<div class="tooltip_row"><span class="tooltip_label">Terminas:</span> <span class="tooltip_val text-secondary fw-bold">∞ Tęstinis (be termino)</span></div>` : ""}
+                        ${deadlineHtml}
+                        <div class="tooltip_row"><span class="tooltip_label">Trukmė:</span> <span class="tooltip_val">${durationText}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Darbo dienos:</span> <span class="tooltip_val"><b>${workDays} d.</b></span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Darbo valandos:</span> <span class="tooltip_val"><b>${workText}</b></span></div>
+                        ${task.allocated_hours ? `<div class="tooltip_row"><span class="tooltip_label">Planuotos val.:</span> <span class="tooltip_val">${escapeHtml(task.allocated_hours)}</span></div>` : ""}
+                        ${timerRowHtml}
+                    ` : `
+                        <div class="tooltip_row"><span class="tooltip_label">Terminas:</span> <span class="tooltip_val text-muted">Nenurodytas (1 d. vaizdas)</span></div>
+                    `}
+                    ${task.assignees ? `<div class="tooltip_row"><span class="tooltip_label">Atsakingas:</span> <span class="tooltip_val">${escapeHtml(task.assignees)}</span></div>` : ""}
+                    <div class="tooltip_progress_bar">
+                        <div class="tooltip_progress_fill" style="width: ${percent}%;"></div>
+                    </div>
+                </div>
+            `;
+        };
+
+        // Task Bar Text & Progress Template (Reflects progress directly in the line itself and renders deadline delay bar)
+        g.templates.task_text = (start, end, task) => {
+            const isLocked = task.is_locked || task.state === "locked";
+            const percent = isLocked ? 0 : Math.round((task.progress || 0) * 100);
+            const isApproved = !isLocked && task.state === "03_approved" && !task.is_done;
+            const isDone = !isLocked && !isApproved && (task.is_done || task.state === "1_done" || (percent >= 100 && (task.is_project || task.is_milestone)));
+            const badgeClass = (isDone || isApproved) ? "bar_prog_badge bar_prog_100" : (isLocked ? "bar_prog_badge bar_prog_locked" : "bar_prog_badge");
+
+            // Status icon: Locked gets a padlock, Done gets a checkmark, Changes Requested gets an exclamation triangle,
+            // Cancelled gets a cross, Waiting gets a clock.
+            // Approved gets NO checkmark (just solid green as requested).
+            let statusIcon = "";
+            if (isLocked) {
+                statusIcon = `<i class="fa fa-lock text-warning me-1"></i>`;
+            } else if (isDone) {
+                statusIcon = `<i class="fa fa-check me-1"></i>`;
+            } else if (task.state === "02_changes_requested") {
+                statusIcon = `<i class="fa fa-exclamation-triangle me-1"></i>`;
+            } else if (task.state === "1_canceled") {
+                statusIcon = `<i class="fa fa-times-circle me-1"></i>`;
+            } else if (task.state === "04_waiting_normal" && isLocked) {
+                statusIcon = `<i class="fa fa-clock-o me-1"></i>`;
+            }
+
+            // Red tail: drawn right AFTER the bar, from the planned end up to the deadline (or live "now" for a running timer).
+            let delayBarHtml = "";
+            let delayWidthPx = 0;
+            if (task.has_deadline_delay) {
+                let diffMin = Number(task.delay_minutes) || 0;
+                const dlEnd = task.deadline_end
+                    ? (task.deadline_end instanceof Date ? task.deadline_end : new Date(String(task.deadline_end).replace(/-/g, "/")))
+                    : null;
+                if (!diffMin && dlEnd && !isNaN(dlEnd.getTime())) {
+                    const realWorkEnd = parseWorkDateStr(task.work_end_date) || (end || task.end_date);
+                    if (realWorkEnd && dlEnd.getTime() > realWorkEnd.getTime()) {
+                        diffMin = Math.max(1, Math.ceil((dlEnd.getTime() - realWorkEnd.getTime()) / 60000));
+                    }
+                }
+
+                if (diffMin > 0) {
+                    const diffMs = diffMin * 60000;
+                    const pxPerDay = (this._renderCache && this._renderCache.pxPerDay) || getZoomPxPerDay(this.state.zoomLevel, this.getTimelineVisibleWidth());
+                    let widthPx = 0;
+                    if (isExactTimeResolution(this.state.zoomLevel)) {
+                        const pxPerHour = pxPerDay / 24.0;
+                        widthPx = Math.max(18, Math.round((diffMs / 3600000.0) * pxPerHour));
+                    } else {
+                        const barEndRef = end || task.end_date;
+                        let posDiff = 0;
+                        if (dlEnd && !isNaN(dlEnd.getTime()) && barEndRef) {
+                            const barEndPx = this.safePosFromDate(barEndRef);
+                            const dlEndPx = this.safePosFromDate(dlEnd);
+                            if (barEndPx >= 0 && dlEndPx > barEndPx) {
+                                posDiff = Math.round(dlEndPx - barEndPx);
+                            }
+                        }
+                        const diffDays = Math.max(0.25, diffMs / 86400000.0);
+                        widthPx = Math.max(18, posDiff, Math.round(diffDays * pxPerDay));
+                    }
+
+                    delayWidthPx = widthPx;
+                    const delayText = `+${formatDurationMinutes(diffMin)}`;
+                    const badgeText = widthPx >= 38
+                        ? `<i class="fa fa-clock-o me-1"></i>${delayText}`
+                        : (widthPx >= 18 ? delayText : "");
+                    delayBarHtml = `
+                        <div class="timeline_deadline_delay_bar" style="position: absolute; left: 100%; top: -1px; width: ${widthPx}px; height: calc(100% + 2px);">
+                            <span class="deadline_badge">${badgeText}</span>
+                        </div>
+                    `;
+                }
+            }
+            const getBarWidthPx = (sInput, eInput) => {
+                let w = 100;
+                try {
+                    const sPx = this.safePosFromDate(sInput);
+                    const ePx = this.safePosFromDate(eInput);
+                    if (sPx >= 0 && ePx >= sPx) {
+                        w = Math.max(4, Math.round(ePx - sPx));
+                    } else {
+                        const sD = sInput instanceof Date ? sInput : new Date(sInput);
+                        const eD = eInput instanceof Date ? eInput : new Date(eInput);
+                        const durDays = Math.max(0.05, (eD.getTime() - sD.getTime()) / 86400000);
+                        const pxPerDay = ZOOM_PX_PER_DAY[this.state.zoomLevel] || 32;
+                        w = Math.max(4, Math.round(durDays * pxPerDay));
+                    }
+                } catch {
+                    w = 100;
+                }
+                return w;
+            };
+
+            const barWidthPx = (typeof task._cachedBarWidthPx === "number")
+                ? task._cachedBarWidthPx
+                : getBarWidthPx(start || task.start_date, end || task.end_date);
+            const hoursBadge = (task.allocated_hours && barWidthPx >= 110) ? ` <span class="bar_hours_badge">(${escapeHtml(task.allocated_hours)})</span>` : "";
+
+            // Early finish tail ("- uodegėlė"): drawn inside the right part of the bar
+            let earlyBarHtml = "";
+            let earlyWidthPx = 0;
+            if (task.has_early_finish && !task.has_deadline_delay) {
+                let earlyMin = Number(task.early_minutes) || 0;
+                const actEnd = task.actual_finish_date
+                    ? (task.actual_finish_date instanceof Date ? task.actual_finish_date : new Date(String(task.actual_finish_date).replace(/-/g, "/")))
+                    : null;
+                if (!earlyMin && actEnd && !isNaN(actEnd.getTime())) {
+                    const realWorkEnd = parseWorkDateStr(task.work_end_date) || (end || task.end_date);
+                    if (realWorkEnd && realWorkEnd.getTime() > actEnd.getTime()) {
+                        earlyMin = Math.max(1, Math.ceil((realWorkEnd.getTime() - actEnd.getTime()) / 60000));
+                    }
+                }
+
+                if (earlyMin > 0) {
+                    const diffMs = earlyMin * 60000;
+                    const pxPerDay = (this._renderCache && this._renderCache.pxPerDay) || getZoomPxPerDay(this.state.zoomLevel, this.getTimelineVisibleWidth());
+                    const barEndRef = end || task.end_date;
+                    let posDiff = 0;
+                    if (actEnd && !isNaN(actEnd.getTime()) && barEndRef) {
+                        const barEndPx = this.safePosFromDate(barEndRef);
+                        const actEndPx = this.safePosFromDate(actEnd);
+                        if (barEndPx >= 0 && actEndPx >= 0 && barEndPx > actEndPx) {
+                            posDiff = Math.round(barEndPx - actEndPx);
+                        }
+                    }
+
+                    if (isExactTimeResolution(this.state.zoomLevel)) {
+                        const pxPerHour = pxPerDay / 24.0;
+                        const calcPx = Math.round((diffMs / 3600000.0) * pxPerHour);
+                        earlyWidthPx = Math.max(18, posDiff > 0 ? posDiff : calcPx);
+                    } else {
+                        const diffDays = Math.max(0.25, diffMs / 86400000.0);
+                        earlyWidthPx = Math.max(18, posDiff, Math.round(diffDays * pxPerDay));
+                    }
+
+                    // Strict clamping: never let early finish bar overflow the main task bar
+                    if (barWidthPx > 36) {
+                        earlyWidthPx = Math.min(earlyWidthPx, barWidthPx - 28);
+                    } else {
+                        earlyWidthPx = Math.min(earlyWidthPx, Math.max(0, barWidthPx - 6));
+                    }
+
+                    if (earlyWidthPx > 0) {
+                        const earlyText = `-${formatDurationMinutes(earlyMin)}`;
+                        const badgeText = earlyWidthPx >= 38
+                            ? `<i class="fa fa-clock-o me-1"></i>${earlyText}`
+                            : (earlyWidthPx >= 18 ? earlyText : "");
+                        earlyBarHtml = `
+                            <div class="timeline_early_finish_bar" style="position: absolute; right: 0; top: -1px; width: ${earlyWidthPx}px; height: calc(100% + 2px);">
+                                <span class="early_badge">${badgeText}</span>
+                            </div>
+                        `;
+                    }
+                }
+            }
+
+            let workerBadgeHtml = "";
+            if (task.is_locked_by_other) {
+                workerBadgeHtml = `<span class="bar_status_locked_other me-1"><i class="fa fa-lock me-1"></i>${escapeHtml(task.active_user_name || _t("Užrakinta"))}</span>`;
+            } else if (task.is_timer_running) {
+                workerBadgeHtml = `<span class="bar_status_running me-1"><i class="fa fa-play text-white me-1"></i>${escapeHtml(task.active_user_name || _t("Vykdo"))}</span>`;
+            } else if (task.is_paused) {
+                workerBadgeHtml = `<span class="bar_status_paused me-1"><i class="fa fa-pause me-1"></i>${_t("Pristabdyta")}${task.last_pause_reason ? ": " + escapeHtml(task.last_pause_reason) : ""}</span>`;
+            }
+
+            const anchorHtml = task.has_been_approved ? `<i class="fa fa-anchor bar_anchor_approved" title="${_t("Planas užrakintas po patvirtinimo")}"></i>` : "";
+
+            let continuousTailHtml = "";
+            if (task.is_continuous && !task.has_deadline_delay) {
+                continuousTailHtml = `
+                    <div class="timeline_continuous_tail" title="${_t("Tęstinis projektas / užduotis be termino")}">
+                        <span>∞</span>
+                    </div>
+                `;
+            }
+
+            let overdueTailHtml = "";
+            if (task.is_overdue_past && !task.is_continuous && !task.is_done && task.delay_kind !== "timer") {
+                if (!this._renderCache) {
+                    const vw = this.getTimelineVisibleWidth();
+                    const ppd = getZoomPxPerDay(this.state.zoomLevel, vw);
+                    const tr = new Date();
+                    if (this.state.zoomLevel < 60) {
+                        tr.setHours(12, 0, 0, 0);
+                    }
+                    this._renderCache = {
+                        visWidth: vw,
+                        pxPerDay: ppd,
+                        todayRef: tr,
+                        todayPx: this.safePosFromDate(tr),
+                    };
+                }
+                const todayRef = this._renderCache.todayRef;
+                const todayPx = this._renderCache.todayPx;
+                const barEndRef = end || task.end_date;
+                const barEndPx = barEndRef ? this.safePosFromDate(barEndRef) : -1;
+                if (todayPx >= 0 && barEndPx >= 0) {
+                    const tailStartPx = barEndPx + delayWidthPx;
+                    const overdueWidthPx = Math.round(todayPx - tailStartPx);
+                    if (overdueWidthPx >= 4) {
+                        const dlRef = task.has_deadline_delay && task.deadline_end
+                            ? (task.deadline_end instanceof Date ? task.deadline_end : new Date(String(task.deadline_end).replace(/-/g, "/")))
+                            : (barEndRef instanceof Date ? barEndRef : new Date(String(barEndRef).replace(/-/g, "/")));
+                        const diffMin = dlRef && !isNaN(dlRef.getTime())
+                            ? Math.max(1, Math.ceil((todayRef.getTime() - dlRef.getTime()) / 60000))
+                            : 0;
+                        const lateLabel = diffMin > 0 ? `+${formatDurationMinutes(diffMin)}` : "";
+                        const badgeHtml = overdueWidthPx >= 52 && lateLabel
+                            ? `<span class="overdue_tail_badge"><i class="fa fa-exclamation-triangle me-1"></i>${lateLabel}</span>`
+                            : (overdueWidthPx >= 24 && lateLabel ? `<span class="overdue_tail_badge">${lateLabel}</span>` : "");
+                        const leftCss = delayWidthPx > 0 ? `calc(100% + ${delayWidthPx}px)` : "100%";
+                        overdueTailHtml = `
+                            <div class="timeline_overdue_tail" style="position: absolute; left: ${leftCss}; top: -1px; width: ${overdueWidthPx}px; height: calc(100% + 2px);" title="${_t("Vėluoja iki šiandien — nebaigta arba nepakeista pabaigos data")}">
+                                ${badgeHtml}
+                            </div>
+                        `;
+                    }
+                }
+            }
+
+            const contentPaddingStyle = earlyWidthPx > 0 ? `style="padding-right: ${earlyWidthPx + 4}px !important;"` : "";
+
+            if (barWidthPx < 24) {
+                return `
+                    <span class="bar_content_wrapper bar_content_empty"></span>
+                    ${earlyBarHtml}
+                    ${delayBarHtml}
+                    ${overdueTailHtml}
+                    ${continuousTailHtml}
+                `;
+            }
+
+            if (barWidthPx < 56) {
+                return `
+                    <span class="bar_content_wrapper" ${contentPaddingStyle}>
+                        <span class="bar_text">${anchorHtml}${statusIcon}${workerBadgeHtml}${escapeHtml(task.text)}</span>
+                    </span>
+                    ${earlyBarHtml}
+                    ${delayBarHtml}
+                    ${overdueTailHtml}
+                    ${continuousTailHtml}
+                `;
+            }
+
+            return `
+                <span class="bar_content_wrapper" ${contentPaddingStyle}>
+                    <span class="bar_text">${anchorHtml}${statusIcon}${workerBadgeHtml}${escapeHtml(task.text)}${hoursBadge}</span>
+                    <span class="${badgeClass}">${percent}%</span>
+                </span>
+                ${earlyBarHtml}
+                ${delayBarHtml}
+                ${overdueTailHtml}
+                ${continuousTailHtml}
+            `;
+        };
+
+        // Task Bar Styling Template (Applies status classes and adaptive width classes)
+        g.templates.task_class = (start, end, task) => {
+            let barWidthPx = 100;
+            try {
+                const sPx = this.safePosFromDate(start || task.start_date);
+                const ePx = this.safePosFromDate(end || task.end_date);
+                if (sPx >= 0 && ePx >= sPx) {
+                    barWidthPx = Math.max(4, Math.round(ePx - sPx));
+                } else {
+                    const sD = (start || task.start_date) instanceof Date ? (start || task.start_date) : new Date(start || task.start_date);
+                    const eD = (end || task.end_date) instanceof Date ? (end || task.end_date) : new Date(end || task.end_date);
+                    const durDays = Math.max(0.05, (eD.getTime() - sD.getTime()) / 86400000);
+                    const pxPerDay = ZOOM_PX_PER_DAY[this.state.zoomLevel] || 32;
+                    barWidthPx = Math.max(4, Math.round(durDays * pxPerDay));
+                }
+            } catch {
+                barWidthPx = 100;
+            }
+            task._cachedBarWidthPx = barWidthPx;
+            const sizeClass = barWidthPx < 24 ? " bar_ultra_compact" : (barWidthPx < 56 ? " bar_compact" : "");
+            const extraClass = (task.has_deadline_delay ? " has_deadline_delay" : "") + (task.is_overdue_past && !task.is_continuous && !task.is_done && task.delay_kind !== "timer" ? " has_overdue_tail" : "") + (task.has_early_finish ? " has_early_finish" : "") + (task.is_continuous && !task.has_deadline_delay ? " has_continuous_tail" : "") + sizeClass;
+            const state = task.state || (task.is_done ? "1_done" : "01_in_progress");
+
+            if (task.is_project) {
+                let pClass = "gantt_project";
+                const pStatus = task.last_update_status || "";
+                if (pStatus === "on_hold" || state === "04_on_hold" || state === "04_waiting_normal") {
+                    pClass += " project_status_on_hold project_state_waiting";
+                } else if (pStatus === "on_track" || state === "03_on_track" || state === "03_approved") {
+                    pClass += " project_status_on_track project_state_approved";
+                } else if (pStatus === "at_risk" || state === "02_at_risk" || state === "02_changes_requested") {
+                    pClass += " project_status_at_risk project_state_changes_requested";
+                } else if (pStatus === "off_track" || state === "1_off_track" || state === "1_canceled") {
+                    pClass += " project_status_off_track project_state_canceled";
+                } else if (pStatus === "done" || state === "1_done" || task.is_done || task.progress >= 1.0) {
+                    pClass += " project_done project_state_done project_status_done";
+                } else {
+                    pClass += " project_state_in_progress";
+                }
+                if (!this.state.canEdit) {
+                    pClass += " readonly_bar";
+                }
+                return pClass + extraClass;
+            }
+
+            if (task.is_milestone) {
+                let mClass = "timeline_milestone_bar";
+                if (state === "1_done" || task.is_done || task.progress >= 1.0) {
+                    mClass += " milestone_done milestone_state_done";
+                } else {
+                    mClass += " milestone_state_in_progress";
+                }
+                if (!this.state.canEdit) {
+                    mClass += " readonly_bar";
+                }
+                return mClass + extraClass;
+            }
+
+            if (task.is_group) {
+                return "gantt_group_container readonly_bar" + extraClass;
+            }
+
+            if (task.is_po) {
+                const poDone = Boolean(task.is_done);
+                return "task_po readonly_bar" + (poDone ? " task_po_done" : "") + extraClass;
+            }
+
+            if (task.is_mo) {
+                const moDone = task.is_done || state === "done";
+                return "task_mo readonly_bar" + (moDone ? " task_mo_done" : "") + extraClass;
+            }
+
+            if (task.is_delivery) {
+                const delDone = task.is_done || state === "done";
+                return "task_delivery readonly_bar" + (delDone ? " task_delivery_done" : "") + extraClass;
+            }
+
+            // Task / Subtask
+            let tClass = "task_standard";
+            if (task.is_locked || state === "locked") {
+                tClass += " task_locked task_state_locked";
+            } else if (state === "03_approved" && !task.is_done) {
+                tClass += " task_approved task_state_approved";
+            } else if (state === "1_done" || task.is_done) {
+                tClass += " task_done task_state_done";
+            } else if (state === "02_changes_requested") {
+                tClass += " task_changes_requested task_state_changes_requested";
+            } else if (state === "1_canceled") {
+                tClass += " task_canceled task_state_canceled";
+            } else if (state === "04_waiting_normal" && (task.is_locked || state === "locked")) {
+                tClass += " task_waiting task_state_waiting";
+            } else {
+                tClass += " task_in_progress task_state_in_progress";
+            }
+
+            if (task.is_locked_by_other) {
+                tClass += " task_locked_by_other";
+            }
+            if (this.state.canTrackTime || this.state.canEdit) {
+                if (task.is_timer_running) {
+                    tClass += " task_timer_active";
+                }
+                if (task.is_paused) {
+                    tClass += " task_timer_paused";
+                }
+            }
+            if (task.has_been_approved) {
+                tClass += " task_has_approved_plan";
+            }
+            if (!this.state.canEdit) {
+                tClass += " readonly_bar";
+            }
+
+            return tClass + extraClass;
+        };
+
+        // Mark Today, Weekends, Lithuanian National Holidays, Work Hours, and Full-Height Boundary Lines in Timeline Background Cells
+        g.templates.timeline_cell_class = (task, date) => {
+            const scales = g.config.scales || [];
+            const baseScale = scales.length > 0 ? scales[scales.length - 1] : null;
+            const baseUnit = baseScale ? baseScale.unit : "day";
+
+            const today = new Date();
+            const d = date instanceof Date ? date : new Date(date);
+
+            if (baseUnit === "week") {
+                // Weekly view (15% - 25%): align boundary lines to Thursday of ISO week
+                const thu = new Date(d.getTime() + (3 - ((d.getDay() + 6) % 7)) * 86400000);
+                const classes = [];
+                if (thu.getMonth() === 0 && getISOWeekNumber(thu) === 1) classes.push("year_start_grid_cell");
+                else if (thu.getMonth() % 3 === 0 && thu.getDate() <= 7) classes.push("quarter_start_grid_cell");
+                else if (thu.getDate() <= 7) classes.push("month_start_grid_cell");
+                return classes.join(" ");
+            }
+
+            if (baseUnit === "month") {
+                // Macro monthly view (0% - 10%)
+                const isSameMonth = (d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth());
+                const classes = [];
+                if (isSameMonth) classes.push("today_cell");
+                if (d.getMonth() === 0) classes.push("year_start_grid_cell");
+                else if (d.getMonth() % 3 === 0) classes.push("quarter_start_grid_cell");
+                else classes.push("month_start_grid_cell");
+                return classes.join(" ");
+            }
+
+            const isToday = (
+                d.getFullYear() === today.getFullYear() &&
+                d.getMonth() === today.getMonth() &&
+                d.getDate() === today.getDate()
+            );
+            const hol = getLithuanianHoliday(d);
+            const isHoliday = Boolean(hol);
+            const isWorkDay = this.isWorkingDay(d, isHoliday);
+
+            if (baseUnit === "minute") {
+                const hour = d.getHours();
+                const isWorkHour = this.isWorkingDateTime(d, baseScale.step || 15, isHoliday);
+                const classes = [];
+                if (isToday) classes.push("today_cell today_hour_cell");
+                if (isHoliday) classes.push("holiday_cell");
+                else if (!isWorkDay) classes.push("weekend_cell");
+                else if (!isWorkHour) classes.push("off_hours_cell");
+                else classes.push("work_hours_cell");
+
+                if (d.getMinutes() === 0) {
+                    classes.push("hour_start_grid_cell");
+                }
+                if (hour === 0 && d.getMinutes() === 0) {
+                    if (d.getMonth() === 0 && d.getDate() === 1) classes.push("year_start_grid_cell");
+                    else if (d.getDate() === 1 && (d.getMonth() % 3 === 0)) classes.push("quarter_start_grid_cell");
+                    else if (d.getDate() === 1) classes.push("month_start_grid_cell");
+                    else classes.push("day_start_grid_cell");
+                }
+                return classes.join(" ");
+            }
+
+            if (baseUnit === "hour") {
+                const hour = d.getHours();
+                const isWorkHour = this.isWorkingDateTime(d, baseScale.step ? baseScale.step * 60 : 60, isHoliday);
+                const classes = [];
+                if (isToday) classes.push("today_cell today_hour_cell");
+                if (isHoliday) classes.push("holiday_cell");
+                else if (!isWorkDay) classes.push("weekend_cell");
+                else if (!isWorkHour) classes.push("off_hours_cell");
+                else classes.push("work_hours_cell");
+
+                classes.push("hour_start_grid_cell");
+                if (hour === 0) {
+                    if (d.getMonth() === 0 && d.getDate() === 1) classes.push("year_start_grid_cell");
+                    else if (d.getDate() === 1 && (d.getMonth() % 3 === 0)) classes.push("quarter_start_grid_cell");
+                    else if (d.getDate() === 1) classes.push("month_start_grid_cell");
+                    else classes.push("day_start_grid_cell");
+                }
+                return classes.join(" ");
+            }
+
+            // Daily view (35% - 55%)
+            const classes = [];
+            if (isToday) classes.push("today_cell");
+            if (isHoliday) classes.push("holiday_cell");
+            else if (!isWorkDay) classes.push("weekend_cell");
+
+            if (d.getMonth() === 0 && d.getDate() === 1) {
+                classes.push("year_start_grid_cell");
+            } else if (d.getDate() === 1 && (d.getMonth() % 3 === 0)) {
+                classes.push("quarter_start_grid_cell");
+            } else if (d.getDate() === 1) {
+                classes.push("month_start_grid_cell");
+            }
+
+            return classes.join(" ");
+        };
+
+        // Detach any previous Gantt events if re-initializing
+        if (this.eventIds && this.eventIds.length) {
+            for (const id of this.eventIds) {
+                try {
+                    g.detachEvent(id);
+                } catch {
+                    // ignore
+                }
+            }
+            this.eventIds = [];
+        }
+
+        // Clear per-render cache before and after render so todayPx/visWidth are lazily computed on the active scale
+        this._renderCache = null;
+        this.eventIds.push(g.attachEvent("onBeforeGanttRender", () => {
+            this._renderCache = null;
+        }));
+
+        // Render dynamic Today vertical line marker on render and scroll
+        this.eventIds.push(g.attachEvent("onGanttRender", () => {
+            this._renderCache = null;
+            this.renderTodayMarker();
+        }));
+        this.eventIds.push(g.attachEvent("onGanttScroll", (oldLeft, oldTop, left, top) => {
+            this.hideTooltip();
+            this.clearHoverHighlight();
+            this.renderTodayMarker();
+            if (!this._isExpandingRange && !this._isZooming) {
+                this._scheduleSaveViewState();
+            }
+
+            if (!this._isZooming && oldLeft !== undefined && left !== undefined && oldLeft !== left) {
+                this._zoomAnchorDate = null;
+                this._zoomAnchorOffset = null;
+                if (this._zoomResetTimer) {
+                    clearTimeout(this._zoomResetTimer);
+                    this._zoomResetTimer = null;
+                }
+            }
+
+            // Bidirectional elastic infinite scroll: expand only when user actively scrolls past edge
+            if (!this._isExpandingRange && !this._isZooming) {
+                if (oldLeft !== undefined && left !== undefined) {
+                    if (left < oldLeft && left <= 15) {
+                        this.expandTimelineToPast(0);
+                    } else if (left > oldLeft) {
+                        const dataArea = this.ganttElement.el ? this.ganttElement.el.querySelector(".gantt_data_area") : null;
+                        if (dataArea) {
+                            const scrollWidth = dataArea.scrollWidth;
+                            const clientWidth = dataArea.clientWidth;
+                            const maxScroll = scrollWidth - clientWidth;
+                            if (maxScroll > 100 && left >= maxScroll - 15) {
+                                this.expandTimelineToFuture(0);
+                            }
+                        }
+                    }
+                }
+            }
+        }));
+
+        // Selection / Click Handler: NEVER scroll if click is on the timeline chart or after a drag!
+        this.eventIds.push(g.attachEvent("onTaskClick", (id, e) => {
+            if (this._justDragged) {
+                return true;
+            }
+            const isTreeToggle = e && e.target && e.target.closest && (
+                e.target.closest(".gantt_tree_icon.gantt_close") ||
+                e.target.closest(".gantt_tree_icon.gantt_open") ||
+                e.target.closest(".gantt_close") ||
+                e.target.closest(".gantt_open")
+            );
+            // Ctrl+Left-Click (or Cmd+Left-Click) on any row/bar opens the record in a new tab
+            if (
+                e &&
+                (e.ctrlKey || e.metaKey) &&
+                (!e.button || e.button === 0) &&
+                !isTreeToggle &&
+                id &&
+                g.isTaskExists(id)
+            ) {
+                const target = this._getRecordModelAndId(g.getTask(id));
+                if (target) {
+                    if (e.preventDefault) e.preventDefault();
+                    if (e.stopPropagation) e.stopPropagation();
+                    window.open(`/odoo/${target.resModel}/${target.resId}`, "_blank", "noopener");
+                    return false;
+                }
+            }
+            // Alt+Left-Click on any project (or item inside a project) filters the timeline to only that project
+            if (
+                e &&
+                e.altKey &&
+                (!e.button || e.button === 0) &&
+                !isTreeToggle &&
+                id &&
+                g.isTaskExists(id)
+            ) {
+                const clickedTask = g.getTask(id);
+                const targetProjId = clickedTask
+                    ? (clickedTask.is_project && clickedTask.odoo_id ? String(clickedTask.odoo_id) : (clickedTask.project_id ? String(clickedTask.project_id) : ""))
+                    : "";
+                if (targetProjId) {
+                    if (e.preventDefault) e.preventDefault();
+                    if (e.stopPropagation) e.stopPropagation();
+                    this.state.selectedProjectId = targetProjId;
+                    this._projectChanged = true;
+                    this.loadTimelineData().then(() => {
+                        this.navigateToday();
+                        this._scheduleSaveViewState();
+                    });
+                    return false;
+                }
+            }
+            // Check if the click occurred in the left sidebar tree grid
+            const isGridClick = e && e.target && e.target.closest && !!e.target.closest(".gantt_grid");
+            if (!isGridClick) {
+                // Click is on the timeline chart / bar itself - keep viewport completely steady without jumping!
+                return true;
+            }
+
+            // User clicked the row in the left sidebar grid: fit to screen and center project/task (debounced to allow double-click)
+            if (id && g.isTaskExists(id)) {
+                if (!isTreeToggle) {
+                    this._clearTimeout(this._sidebarClickTimer);
+                    this._sidebarClickTimer = this._setTimeout(() => {
+                        this._sidebarClickTimer = null;
+                        this.fitToScreen(id);
+                    }, 60);
+                }
+            }
+            return true;
+        }));
+
+        // Suppress tooltips completely while user is dragging or resizing
+        this.eventIds.push(g.attachEvent("onBeforeTooltip", () => {
+            const state = g.getState();
+            if (state && (state.drag_id || state.drag_mode)) {
+                return false;
+            }
+            return true;
+        }));
+
+        // Strictly forbid changing vertical row position or parent during drag / move
+        this.eventIds.push(g.attachEvent("onBeforeTaskMove", () => false));
+        this.eventIds.push(g.attachEvent("onBeforeRowDragMove", () => false));
+        this.eventIds.push(g.attachEvent("onRowDrag", () => false));
+
+        this.eventIds.push(g.attachEvent("onTaskOpened", () => {
+            this.clearHoverHighlight();
+            this._scheduleSaveViewState();
+            return true;
+        }));
+        this.eventIds.push(g.attachEvent("onTaskClosed", () => {
+            this.clearHoverHighlight();
+            this._scheduleSaveViewState();
+            return true;
+        }));
+
+        // Cascading Drag-and-Drop: record start/end dates for parent and all descendants
+        this.eventIds.push(g.attachEvent("onBeforeTaskDrag", (id, mode, e) => {
+            if (!this.state.canEdit || mode === "progress") {
+                return false;
+            }
+            this.clearHoverHighlight();
+            this.hideTooltip();
+            const task = g.getTask(id);
+            if (!task) return true;
+
+            // Strict Read-Only Protection for POs, MOs, Deliveries, and group containers
+            if (task.readonly || task.is_po || task.is_mo || task.is_delivery || task.is_group || task.is_tasks_group || task.is_po_group || task.is_mo_group || task.is_delivery_group || task.is_mo_standalone_group) {
+                return false;
+            }
+
+            // Exclusive Worker Concurrency Lock: blocked if running/paused by someone else
+            if (task.is_locked_by_other) {
+                if (this.notification) {
+                    this.notification.add(
+                        _t(`Užduotį šiuo metu vykdo ${task.active_user_name || "kitas vartotojas"}. Ji yra užrakinta.`),
+                        { type: "warning" }
+                    );
+                }
+                return false;
+            }
+
+            // Post-Approval Immutability (Anti-Cheating):
+            if (task.has_been_approved) {
+                if (mode === "move") {
+                    if (this.notification) {
+                        this.notification.add(
+                            _t("Užduotis patvirtinta: jos negalima perkelti laiko juostoje."),
+                            { type: "warning" }
+                        );
+                    }
+                    return false;
+                }
+                const state = (g.getState ? g.getState() : {}) || {};
+                let isStart = undefined;
+                if (state.drag_from_start !== undefined) {
+                    isStart = Boolean(state.drag_from_start);
+                } else if (e && e.target && e.target.closest) {
+                    isStart = Boolean(e.target.closest('.task_left, .task_start_date, [data-bind-property="start_date"]'));
+                }
+                if (mode === "resize" && isStart) {
+                    if (this.notification) {
+                        this.notification.add(
+                            _t("Užduotis patvirtinta: suplanuotos pradžios negalima keisti."),
+                            { type: "warning" }
+                        );
+                    }
+                    return false;
+                }
+            }
+
+            task._is_dragged = true;
+            task._drag_start_origin = new Date(task.start_date);
+            task._drag_end_origin = new Date(task.end_date);
+            task._drag_ws_origin = parseWorkDateStr(task.work_start_date) || new Date(task.start_date);
+            task._drag_we_origin = parseWorkDateStr(task.work_end_date) || new Date(task.end_date);
+            task._fixed_parent = task.parent;
+
+            // Reliably capture whether the start (left) or end (right) handle is being dragged
+            const state = (g.getState ? g.getState() : {}) || {};
+            let isStart = undefined;
+            if (state.drag_from_start !== undefined) {
+                isStart = Boolean(state.drag_from_start);
+            } else if (e && e.target && e.target.closest) {
+                isStart = Boolean(e.target.closest('.task_left, .task_start_date, [data-bind-property="start_date"]'));
+            }
+            task._drag_from_start = isStart;
+
+            // Collect magnetic snap target timestamps from other tasks/milestones/projects
+            // (Exclude current task, its ancestors, and its descendants so subtasks never snap to parent boundaries)
+            const snapTimestamps = [];
+            const excludeIds = new Set([id]);
+            let curP = task.parent;
+            while (curP && g.isTaskExists && g.isTaskExists(curP)) {
+                excludeIds.add(curP);
+                curP = g.getTask(curP).parent;
+            }
+            const collectDesc = (pId) => {
+                const kids = (typeof g.getChildren === "function" ? g.getChildren(pId) : []) || [];
+                for (const k of kids) {
+                    excludeIds.add(k);
+                    collectDesc(k);
+                }
+            };
+            collectDesc(id);
+
+            if (g.eachTask) {
+                g.eachTask((other) => {
+                    if (excludeIds.has(other.id)) return;
+                    if (other.start_date) {
+                        snapTimestamps.push(new Date(other.start_date).getTime());
+                    }
+                    if (other.end_date) {
+                        snapTimestamps.push(new Date(other.end_date).getTime());
+                    }
+                });
+            }
+            this._snapTargetTimestamps = Array.from(new Set(snapTimestamps)).sort((a, b) => a - b);
+
+            // Capture snapshot of affected tasks for undo before dragging
+            const captureSnapshot = (t) => {
+                let sStr = t.work_start_date;
+                let eStr = t.work_end_date;
+                if (!sStr || !eStr) {
+                    const c = computeWorkDates(t.start_date, t.end_date);
+                    sStr = formatOdooDateTime(c.workStart);
+                    eStr = formatOdooDateTime(c.workEnd);
+                }
+                const snap = {
+                    id: t.id,
+                    start_date: sStr,
+                    end_date: eStr,
+                    progress: t.progress !== undefined ? t.progress : 0,
+                    text: t.text,
+                };
+                if (!t.is_project && !t.is_milestone) {
+                    snap.plan_is_auto = !(t.plan_is_manual === true);
+                }
+                return snap;
+            };
+
+            const prevSnapshots = [];
+
+            if (mode === "move" || mode === "resize") {
+                const storeDescendants = (parentId) => {
+                    const children = (typeof g.getChildren === "function" ? g.getChildren(parentId) : []) || [];
+                    for (const childId of children) {
+                        const childTask = g.getTask(childId);
+                        if (childTask) {
+                            childTask._drag_start_origin = new Date(childTask.start_date);
+                            childTask._drag_end_origin = new Date(childTask.end_date);
+                            childTask._drag_ws_origin = parseWorkDateStr(childTask.work_start_date) || new Date(childTask.start_date);
+                            childTask._drag_we_origin = parseWorkDateStr(childTask.work_end_date) || new Date(childTask.end_date);
+                            storeDescendants(childId);
+                            prevSnapshots.push(captureSnapshot(childTask));
+                        }
+                    }
+                };
+                storeDescendants(id);
+            }
+
+            prevSnapshots.push(captureSnapshot(task));
+
+            if (mode === "move" || mode === "resize") {
+                let curAnc = task.parent;
+                while (curAnc && g.isTaskExists && g.isTaskExists(curAnc)) {
+                    prevSnapshots.push(captureSnapshot(g.getTask(curAnc)));
+                    curAnc = g.getTask(curAnc).parent;
+                }
+            }
+
+            this._pendingUndoAction = {
+                type: "schedule",
+                description: task.text || _t("Tvarkaraščio keitimas"),
+                previous: prevSnapshots,
+            };
+
+            return true;
+        }));
+
+        // Real-time grid snapping, tight magnetic snapping to siblings, and cascading updates
+        this.eventIds.push(g.attachEvent("onTaskDrag", (id, mode) => {
+            this.hideTooltip();
+            const task = g.getTask(id);
+            if (!task) return;
+
+            // Strict hierarchy lockdown: ensure task.parent cannot change
+            if (task._fixed_parent !== undefined && task.parent !== task._fixed_parent) {
+                task.parent = task._fixed_parent;
+            }
+
+            const zoomLevel = this.state.zoomLevel;
+            const isIntraDay = task.is_hourly || isIntraDayWorkSpan(task.work_start_date, task.work_end_date);
+            const minDurMs = getMinGridDurationMs(zoomLevel, isIntraDay);
+            const SNAP_THRESHOLD_PX = 8;
+            let snappedGuidePx = null;
+
+            if (mode === "resize") {
+                const state = g.getState ? g.getState() : {};
+                const isStartHandle = (task._drag_from_start !== undefined)
+                    ? task._drag_from_start
+                    : (state.drag_from_start !== undefined
+                        ? Boolean(state.drag_from_start)
+                        : (task._drag_start_origin && Math.abs(task.start_date.getTime() - task._drag_start_origin.getTime()) > 0));
+
+                if (isStartHandle) {
+                    // Resizing left handle (start): snap to active grid step
+                    let candidateStart = snapDateToGrid(task.start_date, zoomLevel);
+
+                    // Magnetic snapping to nearby tasks (tight 8px threshold)
+                    if (this._snapTargetTimestamps && this._snapTargetTimestamps.length > 0 && typeof g.posFromDate === "function") {
+                        const currentPx = this.safePosFromDate(candidateStart);
+                        let bestDiff = Infinity;
+                        let bestMs = null;
+                        let bestTargetPx = null;
+
+                        for (const targetMs of this._snapTargetTimestamps) {
+                            const targetPx = this.safePosFromDate(new Date(targetMs));
+                            if (targetPx >= 0 && currentPx >= 0) {
+                                const diff = Math.abs(currentPx - targetPx);
+                                if (diff <= SNAP_THRESHOLD_PX && diff < bestDiff) {
+                                    bestDiff = diff;
+                                    bestMs = targetMs;
+                                    bestTargetPx = targetPx;
+                                }
+                            }
+                        }
+
+                        if (bestMs !== null && bestMs < task.end_date.getTime()) {
+                            candidateStart = new Date(bestMs);
+                            snappedGuidePx = bestTargetPx;
+                            task._magnetically_snapped_start = true;
+                        } else {
+                            task._magnetically_snapped_start = false;
+                        }
+                    }
+
+                    // Enforce minimum duration: subtracting cannot invert or collapse task
+                    if (task.end_date.getTime() - candidateStart.getTime() < minDurMs) {
+                        candidateStart = new Date(task.end_date.getTime() - minDurMs);
+                    }
+
+                    // Strict parent boundary check: subtask start cannot be before parent start
+                    const isSubtaskOfTask = task.parent && typeof task.parent === "string" && task.parent.startsWith("task_");
+                    if (isSubtaskOfTask && g.isTaskExists && g.isTaskExists(task.parent)) {
+                        const pTask = g.getTask(task.parent);
+                        if (pTask && pTask.start_date && candidateStart.getTime() < pTask.start_date.getTime()) {
+                            candidateStart = new Date(pTask.start_date);
+                        }
+                    } else {
+                        // Ancestor container extension: extending start date expands parent containers in real-time
+                        let curAncId = task.parent;
+                        while (curAncId && g.isTaskExists && g.isTaskExists(curAncId)) {
+                            const anc = g.getTask(curAncId);
+                            if (anc && anc.start_date && candidateStart < anc.start_date) {
+                                anc.start_date = new Date(candidateStart);
+                                g.refreshTask(curAncId);
+                            }
+                            curAncId = anc.parent;
+                        }
+                    }
+
+                    task.start_date = candidateStart;
+                } else {
+                    // Resizing right handle (end): snap to active grid step
+                    let candidateEnd = snapDateToGrid(task.end_date, zoomLevel);
+
+                    // Magnetic snapping to nearby tasks (tight 8px threshold)
+                    if (this._snapTargetTimestamps && this._snapTargetTimestamps.length > 0 && typeof g.posFromDate === "function") {
+                        const currentPx = this.safePosFromDate(candidateEnd);
+                        let bestDiff = Infinity;
+                        let bestMs = null;
+                        let bestTargetPx = null;
+
+                        for (const targetMs of this._snapTargetTimestamps) {
+                            const targetPx = this.safePosFromDate(new Date(targetMs));
+                            if (targetPx >= 0 && currentPx >= 0) {
+                                const diff = Math.abs(currentPx - targetPx);
+                                if (diff <= SNAP_THRESHOLD_PX && diff < bestDiff) {
+                                    bestDiff = diff;
+                                    bestMs = targetMs;
+                                    bestTargetPx = targetPx;
+                                }
+                            }
+                        }
+
+                        if (bestMs !== null && bestMs > task.start_date.getTime()) {
+                            candidateEnd = new Date(bestMs);
+                            snappedGuidePx = bestTargetPx;
+                            task._magnetically_snapped_end = true;
+                        } else {
+                            task._magnetically_snapped_end = false;
+                        }
+                    }
+
+                    // Enforce minimum duration: subtracting cannot invert or collapse task
+                    if (candidateEnd.getTime() - task.start_date.getTime() < minDurMs) {
+                        candidateEnd = new Date(task.start_date.getTime() + minDurMs);
+                    }
+
+                    // Post-Approval Immutability (Anti-Cheating): cannot shrink smaller than approved baseline
+                    if (task.has_been_approved) {
+                        const minEnd = task._drag_end_origin || task.end_date;
+                        if (candidateEnd < minEnd) {
+                            candidateEnd = new Date(minEnd);
+                        }
+                    }
+
+                    // Strict parent boundary check: subtask planned end cannot be after parent planned end
+                    const isSubtaskOfTask = task.parent && typeof task.parent === "string" && task.parent.startsWith("task_");
+                    if (isSubtaskOfTask && g.isTaskExists && g.isTaskExists(task.parent)) {
+                        const pTask = g.getTask(task.parent);
+                        if (pTask && pTask.end_date && candidateEnd.getTime() > pTask.end_date.getTime()) {
+                            candidateEnd = new Date(pTask.end_date);
+                        }
+                    } else {
+                        // Ancestor container extension: extending end date expands parent containers in real-time
+                        let curAncId = task.parent;
+                        while (curAncId && g.isTaskExists && g.isTaskExists(curAncId)) {
+                            const anc = g.getTask(curAncId);
+                            if (anc && anc.end_date && candidateEnd > anc.end_date) {
+                                anc.end_date = new Date(candidateEnd);
+                                g.refreshTask(curAncId);
+                            }
+                            curAncId = anc.parent;
+                        }
+                    }
+
+                    task.end_date = candidateEnd;
+                }
+
+                // Proportional descendant scaling on parent shrink (only scale down when shrinking)
+                if (task._drag_ws_origin && task._drag_we_origin) {
+                    const pOrigDur = task._drag_we_origin.getTime() - task._drag_ws_origin.getTime();
+                    const pDates = computeDragWorkDates({
+                        mode: "resize",
+                        isStartHandle,
+                        origWS: task._drag_ws_origin,
+                        origWE: task._drag_we_origin,
+                        origGS: task._drag_start_origin || task.start_date,
+                        origGE: task._drag_end_origin || task.end_date,
+                        rawStart: task.start_date,
+                        rawEnd: task.end_date,
+                        zoomLevel,
+                    });
+                    const pCurDur = pDates.workEnd.getTime() - pDates.workStart.getTime();
+
+                    if (pCurDur < pOrigDur && pOrigDur > 0) {
+                        this._applyScaleDescendants(id, pDates.workStart, pDates.workEnd, task._drag_ws_origin, task._drag_we_origin, true);
+                    } else {
+                        this._restoreDescendants(id, true);
+                    }
+                }
+            } else if (mode === "move") {
+                const origDurationMs = task._drag_end_origin && task._drag_start_origin
+                    ? (task._drag_end_origin.getTime() - task._drag_start_origin.getTime())
+                    : (task.end_date.getTime() - task.start_date.getTime());
+
+                let candidateStart = snapDateToGrid(task.start_date, zoomLevel);
+
+                if (this._snapTargetTimestamps && this._snapTargetTimestamps.length > 0 && typeof g.posFromDate === "function") {
+                    const startPx = this.safePosFromDate(candidateStart);
+                    const candidateEnd = new Date(candidateStart.getTime() + origDurationMs);
+                    const endPx = this.safePosFromDate(candidateEnd);
+
+                    let bestDiff = Infinity;
+                    let bestType = null;
+                    let bestMs = null;
+                    let bestTargetPx = null;
+
+                    for (const targetMs of this._snapTargetTimestamps) {
+                        const targetPx = this.safePosFromDate(new Date(targetMs));
+
+                        if (targetPx >= 0 && startPx >= 0) {
+                            const diffStart = Math.abs(startPx - targetPx);
+                            if (diffStart <= SNAP_THRESHOLD_PX && diffStart < bestDiff) {
+                                bestDiff = diffStart;
+                                bestType = "start";
+                                bestMs = targetMs;
+                                bestTargetPx = targetPx;
+                            }
+                        }
+
+                        if (targetPx >= 0 && endPx >= 0) {
+                            const diffEnd = Math.abs(endPx - targetPx);
+                            if (diffEnd <= SNAP_THRESHOLD_PX && diffEnd < bestDiff) {
+                                bestDiff = diffEnd;
+                                bestType = "end";
+                                bestMs = targetMs;
+                                bestTargetPx = targetPx;
+                            }
+                        }
+                    }
+
+                    if (bestMs !== null) {
+                        if (bestType === "start") {
+                            candidateStart = new Date(bestMs);
+                            snappedGuidePx = bestTargetPx;
+                            task._magnetically_snapped_start = true;
+                        } else if (bestType === "end") {
+                            candidateStart = new Date(bestMs - origDurationMs);
+                            snappedGuidePx = bestTargetPx;
+                            task._magnetically_snapped_end = true;
+                        }
+                    } else {
+                        task._magnetically_snapped_start = false;
+                        task._magnetically_snapped_end = false;
+                    }
+                }
+
+                // Strict parent boundary rule: subtask cannot be moved outside parent task boundaries
+                const isSubtaskOfTask = task.parent && typeof task.parent === "string" && task.parent.startsWith("task_");
+                if (isSubtaskOfTask && g.isTaskExists && g.isTaskExists(task.parent)) {
+                    const pTask = g.getTask(task.parent);
+                    if (pTask && pTask.start_date && pTask.end_date) {
+                        const pStartMs = pTask.start_date.getTime();
+                        const pEndMs = pTask.end_date.getTime();
+
+                        if (candidateStart.getTime() < pStartMs) {
+                            candidateStart = new Date(pStartMs);
+                        }
+                        if (candidateStart.getTime() + origDurationMs > pEndMs) {
+                            candidateStart = new Date(pEndMs - origDurationMs);
+                            if (candidateStart.getTime() < pStartMs) {
+                                candidateStart = new Date(pStartMs);
+                            }
+                        }
+                    }
+                } else if (task.parent && g.isTaskExists && g.isTaskExists(task.parent)) {
+                    // Task inside milestone or project: moving task expands container if needed
+                    let curAncId = task.parent;
+                    while (curAncId && g.isTaskExists && g.isTaskExists(curAncId)) {
+                        const anc = g.getTask(curAncId);
+                        if (anc && anc.start_date && candidateStart < anc.start_date) {
+                            anc.start_date = new Date(candidateStart);
+                            g.refreshTask(curAncId);
+                        }
+                        if (anc && anc.end_date && (candidateStart.getTime() + origDurationMs) > anc.end_date.getTime()) {
+                            anc.end_date = new Date(candidateStart.getTime() + origDurationMs);
+                            g.refreshTask(curAncId);
+                        }
+                        curAncId = anc.parent;
+                    }
+                }
+
+                task.start_date = candidateStart;
+                task.end_date = new Date(candidateStart.getTime() + origDurationMs);
+                if (isSubtaskOfTask && g.isTaskExists && g.isTaskExists(task.parent)) {
+                    const pTask = g.getTask(task.parent);
+                    if (pTask && pTask.end_date && task.end_date.getTime() > pTask.end_date.getTime()) {
+                        task.end_date = new Date(pTask.end_date);
+                        task.start_date = new Date(Math.max(pTask.start_date ? pTask.start_date.getTime() : 0, pTask.end_date.getTime() - origDurationMs));
+                    }
+                }
+            }
+
+            if (snappedGuidePx !== null) {
+                this.showSnapGuide(snappedGuidePx);
+            } else {
+                this.hideSnapGuide();
+            }
+
+            // Real-time cascading move for all descendants
+            if (mode === "move" && task._drag_start_origin) {
+                const diffMs = task.start_date.getTime() - task._drag_start_origin.getTime();
+                if (diffMs !== 0) {
+                    const shiftDescendants = (parentId) => {
+                        const children = (typeof g.getChildren === "function" ? g.getChildren(parentId) : []) || [];
+                        for (const childId of children) {
+                            const childTask = g.getTask(childId);
+                            if (childTask && childTask._drag_start_origin && childTask._drag_end_origin) {
+                                childTask.start_date = new Date(childTask._drag_start_origin.getTime() + diffMs);
+                                childTask.end_date = new Date(childTask._drag_end_origin.getTime() + diffMs);
+                                g.refreshTask(childId);
+                                shiftDescendants(childId);
+                            }
+                        }
+                    };
+                    shiftDescendants(id);
+                }
+            }
+        }));
+
+        // Attach Drag Event Handlers for Tasks, Milestones, and Projects (Batch Saving)
+        this.eventIds.push(g.attachEvent("onAfterTaskDrag", async (id, mode) => {
+            this.hideTooltip();
+            this.hideSnapGuide();
+            this._snapTargetTimestamps = null;
+            this._justDragged = true;
+            this._setTimeout(() => {
+                this._justDragged = false;
+            }, 400);
+
+            const task = g.getTask(id);
+            if (!task) return;
+
+            if (task._fixed_parent !== undefined) {
+                task.parent = task._fixed_parent;
+                delete task._fixed_parent;
+            }
+
+            const zoomLevel = this.state.zoomLevel;
+            const isIntraDay = task.is_hourly || isIntraDayWorkSpan(task.work_start_date, task.work_end_date);
+            const minDurMs = getMinGridDurationMs(zoomLevel, isIntraDay);
+            const origDurationMs = (task._drag_end_origin && task._drag_start_origin)
+                ? (task._drag_end_origin.getTime() - task._drag_start_origin.getTime())
+                : (task.end_date.getTime() - task.start_date.getTime());
+
+            const isSubtaskOfTask = task.parent && typeof task.parent === "string" && task.parent.startsWith("task_");
+
+            const isStartHandle = mode === "resize" && (
+                (task._drag_from_start !== undefined)
+                    ? task._drag_from_start
+                    : (task._drag_start_origin && Math.abs(task.start_date.getTime() - task._drag_start_origin.getTime()) > 0)
+            );
+
+            const origWS = task._drag_ws_origin || parseWorkDateStr(task.work_start_date) || task.start_date;
+            const origWE = task._drag_we_origin || parseWorkDateStr(task.work_end_date) || task.end_date;
+            const origGS = task._drag_start_origin || task.start_date;
+            const origGE = task._drag_end_origin || task.end_date;
+
+            let { workStart, workEnd, changed } = computeDragWorkDates({
+                mode,
+                isStartHandle,
+                origWS,
+                origWE,
+                origGS,
+                origGE,
+                rawStart: task.start_date,
+                rawEnd: task.end_date,
+                zoomLevel,
+            });
+
+            // Post-Approval Immutability (Anti-Cheating): cannot move start date or reduce baseline duration
+            if (task.has_been_approved) {
+                if (mode === "move") {
+                    workStart = new Date(origWS);
+                    workEnd = new Date(origWE);
+                    changed = false;
+                } else if (mode === "resize") {
+                    if (workStart.getTime() !== origWS.getTime()) {
+                        workStart = new Date(origWS);
+                        changed = true;
+                    }
+                    if (workEnd.getTime() < origWE.getTime()) {
+                        workEnd = new Date(origWE);
+                        changed = true;
+                    }
+                }
+            }
+
+            // Strict parent boundary rule: subtask cannot be moved or resized outside parent task boundaries
+            if (isSubtaskOfTask && g.isTaskExists && g.isTaskExists(task.parent)) {
+                const pTask = g.getTask(task.parent);
+                const pWS = parseWorkDateStr(pTask.work_start_date);
+                const pWE = parseWorkDateStr(pTask.work_end_date);
+                if (pWS && pWE) {
+                    if (mode === "move") {
+                        const taskDurMs = workEnd.getTime() - workStart.getTime();
+                        if (workStart.getTime() < pWS.getTime()) {
+                            workStart = new Date(pWS);
+                            workEnd = new Date(workStart.getTime() + taskDurMs);
+                            changed = true;
+                        }
+                        if (workEnd.getTime() > pWE.getTime()) {
+                            workEnd = new Date(pWE);
+                            workStart = new Date(Math.max(pWS.getTime(), workEnd.getTime() - taskDurMs));
+                            changed = true;
+                        }
+                    } else if (mode === "resize") {
+                        if (workStart.getTime() < pWS.getTime()) {
+                            workStart = new Date(pWS);
+                            changed = true;
+                        }
+                        if (workEnd.getTime() > pWE.getTime()) {
+                            workEnd = new Date(pWE);
+                            changed = true;
+                        }
+                    }
+                }
+            } else if (task.parent && g.isTaskExists && g.isTaskExists(task.parent)) {
+                // Task inside milestone or project: moving/resizing expands ancestor containers if needed
+                let curAncId = task.parent;
+                while (curAncId && g.isTaskExists && g.isTaskExists(curAncId)) {
+                    const anc = g.getTask(curAncId);
+                    const ancWS = parseWorkDateStr(anc.work_start_date);
+                    const ancWE = parseWorkDateStr(anc.work_end_date);
+                    let ancChanged = false;
+                    let newAncWS = ancWS;
+                    let newAncWE = ancWE;
+                    if (ancWS && workStart < ancWS) {
+                        newAncWS = new Date(workStart);
+                        ancChanged = true;
+                    }
+                    if (ancWE && workEnd > ancWE) {
+                        newAncWE = new Date(workEnd);
+                        ancChanged = true;
+                    }
+                    if (ancChanged) {
+                        anc.work_start_date = formatOdooDateTime(newAncWS);
+                        anc.work_end_date = formatOdooDateTime(newAncWE);
+                        const { gridStart: aGS, gridEnd: aGE } = workDatesToVisualGrid(newAncWS, newAncWE, zoomLevel);
+                        anc.start_date = aGS;
+                        anc.end_date = aGE;
+                        g.updateTask(curAncId);
+                    }
+                    curAncId = anc.parent;
+                }
+            }
+
+            const { gridStart, gridEnd } = workDatesToVisualGrid(workStart, workEnd, zoomLevel);
+            task.start_date = gridStart;
+            task.end_date = gridEnd;
+            task.work_start_date = formatOdooDateTime(workStart);
+            task.work_end_date = formatOdooDateTime(workEnd);
+
+            if (typeof g.calculateDuration === "function") {
+                task.duration = g.calculateDuration(task.start_date, task.end_date);
+            }
+
+            delete task._magnetically_snapped_start;
+            delete task._magnetically_snapped_end;
+            delete task._is_dragged;
+            delete task._drag_from_start;
+
+            // If parent was resized, finalize descendant scaling (only scale down when shrinking)
+            if (mode === "resize" && origWS && origWE) {
+                const pOrigDur = origWE.getTime() - origWS.getTime();
+                const pFinalDur = workEnd.getTime() - workStart.getTime();
+
+                if (pFinalDur < pOrigDur && pOrigDur > 0) {
+                    this._applyScaleDescendants(id, workStart, workEnd, origWS, origWE, false);
+                } else {
+                    this._restoreDescendants(id, false);
+                }
+            }
+
+            // Real-time cascading move for descendants in work-time
+            if (mode === "move" && changed && origWS) {
+                const isExact = isExactTimeResolution(zoomLevel);
+                const deltaMs = workStart.getTime() - origWS.getTime();
+                const kDays = Math.round(deltaMs / 86400000);
+
+                const shiftDescendantsWork = (parentId) => {
+                    const children = (typeof g.getChildren === "function" ? g.getChildren(parentId) : []) || [];
+                    for (const childId of children) {
+                        const childTask = g.getTask(childId);
+                        if (childTask && childTask._drag_ws_origin && childTask._drag_we_origin) {
+                            const cWorkStart = isExact
+                                ? new Date(childTask._drag_ws_origin.getTime() + deltaMs)
+                                : addCalendarDays(childTask._drag_ws_origin, kDays);
+                            const cWorkEnd = isExact
+                                ? new Date(childTask._drag_we_origin.getTime() + deltaMs)
+                                : addCalendarDays(childTask._drag_we_origin, kDays);
+                            childTask.work_start_date = formatOdooDateTime(cWorkStart);
+                            childTask.work_end_date = formatOdooDateTime(cWorkEnd);
+                            const { gridStart: cGridStart, gridEnd: cGridEnd } = workDatesToVisualGrid(cWorkStart, cWorkEnd, zoomLevel);
+                            childTask.start_date = cGridStart;
+                            childTask.end_date = cGridEnd;
+                            g.updateTask(childId);
+                            shiftDescendantsWork(childId);
+                        }
+                    }
+                };
+                shiftDescendantsWork(id);
+            }
+
+            const updates = [];
+            task._established_start = new Date(gridStart);
+            task._established_end = new Date(gridEnd);
+            task._established_work_start = formatOdooDateTime(workStart);
+            task._established_work_end = formatOdooDateTime(workEnd);
+            task._established_alloc_hours = task.allocated_hours;
+            if (task.is_milestone) {
+                task.planned_date_start = formatOdooDateTime(workStart);
+                task.planned_date_end = formatOdooDateTime(workEnd);
+            }
+
+            // Re-evaluate the red tail on the dragged task (real clock times, not grid coordinates).
+            // Same rule as the backend: tail = planned end -> deadline when the deadline is LATER than the new end.
+            // Directly dragging or resizing a task (leaf or parent) makes its plan manual (user action).
+            if (changed && !task.is_project && !task.is_milestone && (mode === "move" || mode === "resize")) {
+                task.plan_is_manual = true;
+            }
+            if (task.has_own_deadline !== false) {
+                let newKind = "";
+                let newMs = 0;
+                const nowMs = Date.now();
+                const hasKids = typeof g.hasChild === "function" ? g.hasChild(task.id) : false;
+                const tailAllowed = task.plan_is_manual !== false || hasKids || task.is_project || task.is_milestone;
+                if (tailAllowed && task.deadline_end && (task.date_deadline || task.has_deadline)) {
+                    const dlEnd = task.deadline_end instanceof Date
+                        ? task.deadline_end
+                        : new Date(String(task.deadline_end).replace(/-/g, "/"));
+                    if (!isNaN(dlEnd.getTime()) && dlEnd.getTime() > workEnd.getTime()) {
+                        newKind = "late";
+                        newMs = dlEnd.getTime() - workEnd.getTime();
+                    }
+                }
+                if (!newKind && task.is_timer_running && task.plan_is_manual !== false && nowMs > workEnd.getTime()) {
+                    newKind = "timer";
+                    newMs = nowMs - workEnd.getTime();
+                }
+                task.has_deadline_delay = Boolean(newKind);
+                task.delay_kind = newKind;
+                task.delay_minutes = newKind ? Math.max(1, Math.ceil(newMs / 60000)) : 0;
+                task.delay_days = newKind ? Math.floor(newMs / 86400000) : 0;
+                task.delay_hours = newKind ? Math.round((newMs / 3600000) * 10) / 10 : 0;
+            }
+
+            // Real-time update of allocated working hours from darbo valandos
+            const workCalc = calculateWorkingDaysAndHours(workStart, workEnd, this.state.workingHours);
+            if (workCalc.workHours > 0) {
+                task.allocated_hours = formatHoursLabel(workCalc.workHours);
+            }
+
+            if (mode === "move" || mode === "resize") {
+                const collectDescendants = (parentId) => {
+                    const children = (typeof g.getChildren === "function" ? g.getChildren(parentId) : []) || [];
+                    for (const childId of children) {
+                        const childTask = g.getTask(childId);
+                        if (!childTask) continue;
+                        collectDescendants(childId);
+                        const cWorkStart = parseWorkDateStr(childTask.work_start_date);
+                        const cWorkEnd = parseWorkDateStr(childTask.work_end_date);
+                        const unchanged = Boolean(
+                            childTask._drag_ws_origin && childTask._drag_we_origin && cWorkStart && cWorkEnd
+                            && cWorkStart.getTime() === childTask._drag_ws_origin.getTime()
+                            && cWorkEnd.getTime() === childTask._drag_we_origin.getTime()
+                        );
+                        if (!unchanged && cWorkStart && cWorkEnd) {
+                            childTask._established_start = new Date(childTask.start_date);
+                            childTask._established_end = new Date(childTask.end_date);
+                            childTask._established_work_start = formatOdooDateTime(cWorkStart);
+                            childTask._established_work_end = formatOdooDateTime(cWorkEnd);
+
+                            if (childTask.is_milestone) {
+                                childTask.planned_date_start = formatOdooDateTime(cWorkStart);
+                                childTask.planned_date_end = formatOdooDateTime(cWorkEnd);
+                            }
+                            const cWorkCalc = calculateWorkingDaysAndHours(cWorkStart, cWorkEnd, this.state.workingHours);
+                            if (cWorkCalc.workHours > 0) childTask.allocated_hours = formatHoursLabel(cWorkCalc.workHours);
+                            childTask._established_alloc_hours = childTask.allocated_hours;
+
+                            const childUpdate = {
+                                id: childTask.id,
+                                start_date: formatOdooDateTime(cWorkStart),
+                                end_date: formatOdooDateTime(cWorkEnd),
+                                progress: childTask.progress,
+                                allocated_hours: cWorkCalc.workHours,
+                            };
+                            if (!childTask.is_project && !childTask.is_milestone) {
+                                childUpdate.plan_is_auto = !(childTask.plan_is_manual === true);
+                            }
+                            updates.push(childUpdate);
+                        }
+                        delete childTask._drag_start_origin;
+                        delete childTask._drag_end_origin;
+                        delete childTask._drag_ws_origin;
+                        delete childTask._drag_we_origin;
+                    }
+                };
+                collectDescendants(id);
+            }
+
+            if (changed) {
+                const selfUpdate = {
+                    id: task.id,
+                    start_date: formatOdooDateTime(workStart),
+                    end_date: formatOdooDateTime(workEnd),
+                    progress: task.progress,
+                    allocated_hours: workCalc.workHours,
+                };
+                if (!task.is_project && !task.is_milestone) {
+                    selfUpdate.plan_is_auto = !(task.plan_is_manual === true);
+                }
+                updates.push(selfUpdate);
+            }
+
+            delete task._drag_start_origin;
+            delete task._drag_end_origin;
+            delete task._drag_ws_origin;
+            delete task._drag_we_origin;
+
+            // Save the exact current scroll position before saving/rendering
+            const scrollPos = g.getScrollState ? g.getScrollState() : { x: 0, y: 0 };
+            const state = g.getState ? g.getState() : {};
+            const minScale = state.min_date || g.config.start_date;
+            const maxScale = state.max_date || g.config.end_date;
+            let needsScaleExpand = (minScale && task.start_date < minScale) || (maxScale && task.end_date > maxScale);
+
+            // Update ancestor containers (parent task, milestone, project) in real-time to encompass children without creating fake deadline delays
+            let currParentId = task.parent;
+            while (currParentId && g.isTaskExists(currParentId)) {
+                const parent = g.getTask(currParentId);
+                const pChildren = (typeof g.getChildren === "function" ? g.getChildren(currParentId) : []) || [];
+                if (pChildren.length > 0) {
+                    let minCS = null;
+                    let maxCE = null;
+                    let minWorkS = null;
+                    let maxWorkE = null;
+                    for (const cid of pChildren) {
+                        const ct = g.getTask(cid);
+                        if (ct && ct.start_date && ct.end_date) {
+                            if (!minCS || ct.start_date < minCS) minCS = new Date(ct.start_date);
+                            if (!maxCE || ct.end_date > maxCE) maxCE = new Date(ct.end_date);
+                            const cws = parseWorkDateStr(ct.work_start_date);
+                            const cwe = parseWorkDateStr(ct.work_end_date);
+                            if (cws && (!minWorkS || cws < minWorkS)) minWorkS = cws;
+                            if (cwe && (!maxWorkE || cwe > maxWorkE)) maxWorkE = cwe;
+                        }
+                    }
+                    // R3: a parent with a MANUAL plan keeps its own span; children beyond it become its red tail.
+                    const parentIsManual = parent.plan_is_manual === true;
+                    const pEstStart = parent._established_start || parent.start_date;
+                    const pEstEnd = parent._established_end || parent.end_date;
+                    const pEstWorkStart = parseWorkDateStr(parent._established_work_start || parent.work_start_date);
+                    const pEstWorkEnd = parseWorkDateStr(parent._established_work_end || parent.work_end_date);
+
+                    // RULE: Child cannot decrease parent's established length, only increase (expand) it!
+                    const finalGridStart = (pEstStart && minCS) ? (minCS < pEstStart ? minCS : pEstStart) : (minCS || pEstStart);
+                    const finalGridEnd = (pEstEnd && maxCE) ? (maxCE > pEstEnd ? maxCE : pEstEnd) : (maxCE || pEstEnd);
+
+                    const finalWorkStart = (pEstWorkStart && minWorkS) ? (minWorkS < pEstWorkStart ? minWorkS : pEstWorkStart) : (minWorkS || pEstWorkStart);
+                    const finalWorkEnd = (pEstWorkEnd && maxWorkE) ? (maxWorkE > pEstWorkEnd ? maxWorkE : pEstWorkEnd) : (maxWorkE || pEstWorkEnd);
+
+                    let ancChanged = false;
+                    if (!parentIsManual && finalGridStart && finalGridEnd) {
+                        if (parent.start_date.getTime() !== finalGridStart.getTime() || parent.end_date.getTime() !== finalGridEnd.getTime()) {
+                            ancChanged = true;
+                        }
+                        if (minScale && finalGridStart < minScale) needsScaleExpand = true;
+                        if (maxScale && finalGridEnd > maxScale) needsScaleExpand = true;
+
+                        parent.start_date = finalGridStart;
+                        parent.end_date = finalGridEnd;
+                        const pWork = (finalWorkStart && finalWorkEnd)
+                            ? { workStart: finalWorkStart, workEnd: finalWorkEnd }
+                            : visualGridToWorkDates(finalGridStart, finalGridEnd, zoomLevel, parent.work_start_date, parent.work_end_date, "move");
+                        parent.work_start_date = formatOdooDateTime(pWork.workStart);
+                        parent.work_end_date = formatOdooDateTime(pWork.workEnd);
+
+                        // Only recalculate allocated_hours if the parent expanded beyond its established span
+                        if ((pEstWorkStart && finalWorkStart < pEstWorkStart) || (pEstWorkEnd && finalWorkEnd > pEstWorkEnd)) {
+                            const pWorkCalc = calculateWorkingDaysAndHours(pWork.workStart, pWork.workEnd, this.state.workingHours);
+                            if (pWorkCalc.workHours > 0) parent.allocated_hours = formatHoursLabel(pWorkCalc.workHours);
+                            parent._established_alloc_hours = parent.allocated_hours;
+                        } else if (parent._established_alloc_hours) {
+                            parent.allocated_hours = parent._established_alloc_hours;
+                        }
+
+                        if (ancChanged) {
+                            const ancUpdate = {
+                                id: parent.id,
+                                start_date: parent.work_start_date,
+                                end_date: parent.work_end_date,
+                                progress: parent.progress,
+                                allocated_hours: parent.allocated_hours ? parseHoursLabel(parent.allocated_hours) : 0,
+                            };
+                            if (!parent.is_project && !parent.is_milestone) {
+                                ancUpdate.plan_is_auto = !(parent.plan_is_manual === true);
+                            }
+                            updates.push(ancUpdate);
+                        }
+                    }
+                    // Red tail of the parent = latest child end (planned end or deadline) beyond the parent's own end,
+                    // or the parent's own typed deadline, whichever is later.
+                    const parentWorkEnd = parseWorkDateStr(parent.work_end_date) || parent.end_date;
+                    if (parent._manual_dl === undefined) {
+                        parent._manual_dl = (parent.has_own_deadline && !parent.deadline_is_auto && parent.deadline_end)
+                            ? (parent.deadline_end instanceof Date ? parent.deadline_end : new Date(String(parent.deadline_end).replace(/-/g, "/")))
+                            : null;
+                    }
+                    let tailEnd = (parent._manual_dl && !isNaN(parent._manual_dl.getTime())) ? parent._manual_dl : null;
+                    let tailKind = "late";
+                    for (const cid of pChildren) {
+                        const ct = g.getTask(cid);
+                        if (!ct) continue;
+                        let eff = parseWorkDateStr(ct.work_end_date) || (ct.work_start_date ? parseWorkDateStr(parent.work_end_date) : null);
+                        if (ct.has_deadline_delay && ct.deadline_end) {
+                            const cDl = ct.deadline_end instanceof Date
+                                ? ct.deadline_end
+                                : new Date(String(ct.deadline_end).replace(/-/g, "/"));
+                            if (!isNaN(cDl.getTime()) && (!eff || cDl > eff)) {
+                                eff = cDl;
+                                if (ct.delay_kind === "timer") tailKind = "timer";
+                            }
+                        }
+                        if (eff && (!tailEnd || eff > tailEnd)) tailEnd = eff;
+                    }
+                    if (tailEnd && parentWorkEnd && tailEnd.getTime() > parentWorkEnd.getTime()) {
+                        const diffMs = tailEnd.getTime() - parentWorkEnd.getTime();
+                        parent.has_deadline = true;
+                        parent.has_deadline_delay = true;
+                        parent.delay_kind = tailKind;
+                        parent.deadline_end = formatOdooDateTime(tailEnd);
+                        parent.date_deadline = parent.deadline_end;
+                        parent.delay_minutes = Math.max(1, Math.ceil(diffMs / 60000));
+                        parent.delay_days = Math.floor(diffMs / 86400000);
+                        parent.delay_hours = Math.round((diffMs / 3600000) * 10) / 10;
+                        // Hierarchy conflict rule: Lateness strictly dominates!
+                        parent.has_early_finish = false;
+                        parent.early_minutes = 0;
+                        parent.early_hours = 0;
+                        parent.early_days = 0;
+                    } else {
+                        parent.has_deadline_delay = false;
+                        parent.delay_kind = "";
+                        parent.delay_minutes = 0;
+                        parent.delay_days = 0;
+                        parent.delay_hours = 0;
+
+                        // Check if all children are finished and completed early
+                        let nonCanceledCount = 0;
+                        let allFinished = true;
+                        let maxChildFinish = null;
+                        for (const cid of pChildren) {
+                            const ct = g.getTask(cid);
+                            if (!ct || ct.state === "1_canceled") continue;
+                            nonCanceledCount++;
+                            const isChildDone = ct.state === "03_approved" || ct.state === "1_done" || ct.is_done;
+                            if (!isChildDone) {
+                                allFinished = false;
+                                break;
+                            }
+                            let cFinish = null;
+                            if (ct.has_deadline_delay && ct.deadline_end) {
+                                cFinish = ct.deadline_end instanceof Date ? ct.deadline_end : new Date(String(ct.deadline_end).replace(/-/g, "/"));
+                            } else if (ct.actual_finish_date) {
+                                cFinish = ct.actual_finish_date instanceof Date ? ct.actual_finish_date : new Date(String(ct.actual_finish_date).replace(/-/g, "/"));
+                            } else if (ct.work_end_date) {
+                                cFinish = parseWorkDateStr(ct.work_end_date);
+                            }
+                            if (cFinish && !isNaN(cFinish.getTime())) {
+                                if (!maxChildFinish || cFinish.getTime() > maxChildFinish.getTime()) {
+                                    maxChildFinish = cFinish;
+                                }
+                            }
+                        }
+                        if (nonCanceledCount > 0 && allFinished && maxChildFinish && parentWorkEnd && maxChildFinish.getTime() < parentWorkEnd.getTime()) {
+                            const earlyDiffMs = parentWorkEnd.getTime() - maxChildFinish.getTime();
+                            parent.has_early_finish = true;
+                            parent.actual_finish_date = formatOdooDateTime(maxChildFinish);
+                            parent.early_minutes = Math.max(1, Math.ceil(earlyDiffMs / 60000));
+                            parent.early_hours = Math.round((earlyDiffMs / 3600000) * 10) / 10;
+                            parent.early_days = Math.floor(earlyDiffMs / 86400000);
+                        } else {
+                            parent.has_early_finish = false;
+                            parent.early_minutes = 0;
+                            parent.early_hours = 0;
+                            parent.early_days = 0;
+                        }
+                    }                    if (!needsScaleExpand) {
+                        g.updateTask(currParentId);
+                    }
+                }
+                currParentId = parent.parent;
+            }
+
+            // Check if anything actually changed compared to the previous snapshot
+            if (this._pendingUndoAction && this._pendingUndoAction.previous) {
+                let hasChanged = false;
+                const prevMap = new Map();
+                for (const p of this._pendingUndoAction.previous) {
+                    prevMap.set(p.id, p);
+                }
+                for (const u of updates) {
+                    const p = prevMap.get(u.id);
+                    if (!p || p.start_date !== u.start_date || p.end_date !== u.end_date || p.progress !== u.progress) {
+                        hasChanged = true;
+                        break;
+                    }
+                }
+                if (hasChanged) {
+                    this.pushUndo(this._pendingUndoAction);
+                }
+                this._pendingUndoAction = null;
+            }
+
+            try {
+                await this.orm.call("project.task", "save_timeline_batch_schedule", [updates]);
+
+                if (needsScaleExpand) {
+                    this.ensureTimelineRange(task.start_date, task.end_date);
+                    g.render();
+                    if (g.scrollTo && scrollPos) {
+                        g.scrollTo(scrollPos.x, scrollPos.y);
+                    }
+                } else {
+                    // Update affected tasks in-place: completely smooth, zero reload flicker, zero scroll jump!
+                    g.updateTask(task.id);
+                    for (const u of updates) {
+                        if (u.id !== task.id && g.isTaskExists(u.id)) {
+                            g.updateTask(u.id);
+                        }
+                    }
+                    this.renderTodayMarker();
+                }
+            } catch (err) {
+                if (this.undoStack && this.undoStack.length) {
+                    this.undoStack.pop();
+                    this.state.undoCount = this.undoStack.length;
+                }
+                await this.loadTimelineData();
+                this.notification.add(_t("Klaida atnaujinant: ") + (err.data && err.data.message ? err.data.message : err.message), { type: "danger" });
+            }
+        }));
+
+
+        // Double-click to open Odoo Task Form Dialog, Milestone Dialog, Project Dialog, PO, MO, or Delivery Dialog
+        this.eventIds.push(g.attachEvent("onTaskDblClick", (id) => {
+            const task = g.getTask(id);
+            if (!task) return false;
+            if (task.is_group) {
+                return false;
+            }
+            if (task.is_po) {
+                this.openPoFormDialog(task.odoo_id);
+                return false;
+            }
+            if (task.is_mo) {
+                this.openMoFormDialog(task.odoo_id);
+                return false;
+            }
+            if (task.is_delivery) {
+                this.openDeliveryFormDialog(task.odoo_id);
+                return false;
+            }
+            if (task.is_project) {
+                this.openProjectFormDialog(task.odoo_id);
+                return false;
+            }
+            if (task.is_milestone) {
+                this.openMilestoneFormDialog(task.odoo_id);
+                return false;
+            }
+            this.openTaskFormDialog(task.odoo_id);
+            return false;
+        }));
+
+        // Dependency Link Events
+        this.eventIds.push(g.attachEvent("onBeforeLinkAdd", (id, link) => {
+            if (!this.state.canEdit) {
+                return false;
+            }
+            if (link) {
+                const s = String(link.source || "");
+                const t = String(link.target || "");
+                if (!s.startsWith("task_") || !t.startsWith("task_") || s === t) {
+                    return false;
+                }
+                const sourceTask = g.getTask(link.source);
+                const targetTask = g.getTask(link.target);
+                if (!sourceTask || !targetTask || sourceTask.is_po || sourceTask.is_mo || sourceTask.is_delivery || sourceTask.is_group || targetTask.is_po || targetTask.is_mo || targetTask.is_delivery || targetTask.is_group) {
+                    return false;
+                }
+            }
+            this.hideTooltip();
+            return true;
+        }));
+
+        this.eventIds.push(g.attachEvent("onBeforeLinkDelete", () => {
+            if (!this.state.canEdit) {
+                return false;
+            }
+            return true;
+        }));
+
+        this.eventIds.push(g.attachEvent("onAfterLinkAdd", async (id, link) => {
+            if (this._suppressLinkEvents) return;
+            const sourceTask = g.getTask(link.source);
+            const targetTask = g.getTask(link.target);
+            if (sourceTask && targetTask && !sourceTask.is_project && !targetTask.is_project && !sourceTask.is_milestone && !targetTask.is_milestone) {
+                try {
+                    await this.orm.call("project.task", "add_timeline_dependency", [
+                        sourceTask.odoo_id,
+                        targetTask.odoo_id,
+                    ]);
+                    this.pushUndo({
+                        type: "link_add",
+                        description: `${sourceTask.text} → ${targetTask.text}`,
+                        sourceId: sourceTask.odoo_id,
+                        targetId: targetTask.odoo_id,
+                    });
+                    await this.loadTimelineData();
+                } catch (err) {
+                    const errMsg = err?.data?.message || err?.message || String(err);
+                    this.notification.add(_t("Klaida pridedant ryšį: ") + errMsg, { type: "danger" });
+                    this._suppressLinkEvents = true;
+                    try {
+                        if (g.isLinkExists && g.isLinkExists(id)) {
+                            g.deleteLink(id);
+                        }
+                    } finally {
+                        this._suppressLinkEvents = false;
+                    }
+                }
+            } else {
+                this._suppressLinkEvents = true;
+                try {
+                    if (g.isLinkExists && g.isLinkExists(id)) {
+                        g.deleteLink(id);
+                    }
+                } finally {
+                    this._suppressLinkEvents = false;
+                }
+            }
+        }));
+
+        this.eventIds.push(g.attachEvent("onAfterLinkDelete", async (id, link) => {
+            if (this._suppressLinkEvents) return;
+            if (link.source_id && link.target_id) {
+                try {
+                    await this.orm.call("project.task", "remove_timeline_dependency", [
+                        link.source_id,
+                        link.target_id,
+                    ]);
+                    this.pushUndo({
+                        type: "link_delete",
+                        description: _t("Priklausomybės ryšys"),
+                        sourceId: link.source_id,
+                        targetId: link.target_id,
+                    });
+                    await this.loadTimelineData();
+                } catch (err) {
+                    const errMsg = err?.data?.message || err?.message || String(err);
+                    this.notification.add(_t("Klaida šalinant ryšį: ") + errMsg, { type: "danger" });
+                    await this.loadTimelineData();
+                }
+            }
+        }));
+
+        if (this.ganttElement.el) {
+            if (this.onGridDblClickHandler) {
+                this.ganttElement.el.removeEventListener("dblclick", this.onGridDblClickHandler);
+            }
+            this.onGridDblClickHandler = (e) => {
+                const gridRow = e.target.closest(".gantt_grid .gantt_row");
+                if (!gridRow) return;
+                const isTreeIcon = e.target.closest(".gantt_tree_icon");
+                if (isTreeIcon) return;
+
+                this._clearTimeout(this._sidebarClickTimer);
+                this._sidebarClickTimer = null;
+
+                const taskId = gridRow.getAttribute("task_id");
+                if (taskId && g.isTaskExists(taskId)) {
+                    const task = g.getTask(taskId);
+                    if (task.is_project) {
+                        this.openProjectFormDialog(task.odoo_id);
+                    } else if (task.is_milestone) {
+                        this.openMilestoneFormDialog(task.odoo_id);
+                    } else {
+                        this.openTaskFormDialog(task.odoo_id);
+                    }
+                }
+            };
+            this.ganttElement.el.addEventListener("dblclick", this.onGridDblClickHandler);
+
+            if (this.onMouseDownHandler && this.ganttElement.el) {
+                this.ganttElement.el.removeEventListener("mousedown", this.onMouseDownHandler);
+            }
+            this.onMouseDownHandler = () => this.hideTooltip();
+            this.ganttElement.el.addEventListener("mousedown", this.onMouseDownHandler);
+
+            if (this.onWheelHandler) {
+                this.ganttElement.el.removeEventListener("wheel", this.onWheelHandler);
+            }
+            this.onWheelHandler = (e) => {
+                if (e.ctrlKey) {
+                    e.preventDefault();
+
+                    const now = Date.now();
+                    if (this._lastWheelTime && (now - this._lastWheelTime) < 28) {
+                        return; // Coalesce ultra-high-frequency trackpad bursts without feeling sluggish
+                    }
+                    this._lastWheelTime = now;
+
+                    const taskViewport = this.ganttElement.el
+                        ? (this.ganttElement.el.querySelector(".gantt_task") || this.ganttElement.el.querySelector(".gantt_data_area"))
+                        : null;
+
+                    // Keep the exact date under the cursor pinned horizontally throughout a wheel zoom gesture
+                    if (!this._wheelAnchorDate || !this._wheelResetTimer) {
+                        if (taskViewport && g.dateFromPos) {
+                            const rect = taskViewport.getBoundingClientRect();
+                            const relX = e.clientX - rect.left;
+                            const visWidth = taskViewport.clientWidth || rect.width;
+                            if (relX >= 0 && relX <= visWidth) {
+                                this._wheelFocalOffset = relX;
+                                const scrollX = g.getScrollState ? g.getScrollState().x : 0;
+                                const mouseXInData = relX + scrollX;
+                                const d = g.dateFromPos(mouseXInData);
+                                if (d instanceof Date && !isNaN(d.getTime())) {
+                                    this._wheelAnchorDate = d;
+                                }
+                            } else {
+                                this._wheelFocalOffset = null;
+                                this._wheelAnchorDate = null;
+                            }
+                        }
+                    }
+
+                    this._clearTimeout(this._wheelResetTimer);
+                    this._wheelResetTimer = this._setTimeout(() => {
+                        this._wheelAnchorDate = null;
+                        this._wheelFocalOffset = null;
+                        this._wheelResetTimer = null;
+                    }, 450);
+
+                    const focalDate = this._wheelAnchorDate;
+                    const focalOffset = this._wheelFocalOffset;
+                    const stepDelta = Math.abs(e.deltaY) < 40 ? 1 : 2;
+
+                    if (e.deltaY < 0) {
+                        this.zoomIn(focalDate, focalOffset, stepDelta);
+                    } else if (e.deltaY > 0) {
+                        this.zoomOut(focalDate, focalOffset, stepDelta);
+                    }
+                }
+            };
+            this.ganttElement.el.addEventListener("wheel", this.onWheelHandler, { passive: false });
+        }
+
+        if (this.onMouseMoveHandler && this.ganttElement.el) {
+            this.ganttElement.el.removeEventListener("mousemove", this.onMouseMoveHandler);
+        }
+        if (this.onMouseLeaveHandler && this.ganttElement.el) {
+            this.ganttElement.el.removeEventListener("mouseleave", this.onMouseLeaveHandler);
+        }
+
+        this.onMouseMoveHandler = (e) => {
+            const g = this.gantt;
+            if (!g || this._isZooming) return;
+            if (g.getState && (g.getState().drag_id || g.getState().drag_mode)) {
+                this.clearHoverHighlight();
+                return;
+            }
+
+            const target = e.target;
+            if (!target) return;
+
+            // If hovering over a holiday cell in the background or scale, dynamically set the holiday tooltip
+            const holidayEl = target.closest ? target.closest(".holiday_cell, .holiday_scale_cell") : null;
+            if (holidayEl && !holidayEl.title && g.dateFromPos) {
+                try {
+                    const taskArea = this.ganttElement.el.querySelector(".gantt_task") || this.ganttElement.el.querySelector(".gantt_data_area");
+                    if (taskArea) {
+                        const areaRect = taskArea.getBoundingClientRect();
+                        const scrollX = g.getScrollState ? g.getScrollState().x : 0;
+                        const dataX = (e.clientX - areaRect.left) + scrollX;
+                        const d = g.dateFromPos(dataX);
+                        if (d) {
+                            const holName = getLithuanianHoliday(d);
+                            if (holName) holidayEl.title = holName;
+                        }
+                    }
+                } catch {}
+            }
+
+            const taskContainer = target.closest ? target.closest("[task_id], [data-task-id]") : null;
+            let taskId = null;
+            if (taskContainer) {
+                taskId = taskContainer.getAttribute("task_id") || taskContainer.getAttribute("data-task-id");
+            }
+            if (!taskId && g.locate) {
+                try {
+                    taskId = g.locate(e);
+                } catch {}
+            }
+
+            if (!taskId || !g.isTaskExists(taskId)) {
+                if (this._currentHoveredTaskId !== null) {
+                    this.clearHoverHighlight();
+                }
+                return;
+            }
+
+            if (taskId === this._currentHoveredTaskId) {
+                return;
+            }
+
+            this.applyHoverHighlight(taskId);
+        };
+
+        this.onMouseLeaveHandler = () => {
+            this.clearHoverHighlight();
+        };
+
+        this.ganttElement.el.addEventListener("mousemove", this.onMouseMoveHandler);
+        this.ganttElement.el.addEventListener("mouseleave", this.onMouseLeaveHandler);
+
+        // Initialize inside container
+        g.init(this.ganttElement.el);
+    }
+
+    /**
+     * Safely calculate pixel X position from date without throwing dhtmlx "Invalid day index" assertions
+     */
+    safePosFromDate(date) {
+        if (!this.gantt || !date) return -1;
+        const g = this.gantt;
+        const d = date instanceof Date ? date : new Date(date);
+        if (isNaN(d.getTime())) return -1;
+        const state = g.getState ? g.getState() : {};
+        const min = state.min_date || g.config.start_date;
+        const max = state.max_date || g.config.end_date;
+        if (min && d < min) return -1;
+        if (max && d > max) return -1;
+        try {
+            return g.posFromDate ? g.posFromDate(d) : -1;
+        } catch {
+            return -1;
+        }
+    }
+
+    /**
+     * Unified timescale configuration driven purely by zoomLevel (0% to 100% in 5% steps).
+     * - 0% (overview): ~5.5 years visible across viewport; Year -> Quarter -> Month
+     * - 15% to 25%: Year -> Quarter -> Month -> Week
+     * - 30% to 45%: Year -> Quarter -> Month -> Week -> Day
+     * - 50% to 55%: Year -> Quarter -> Month -> Week -> Day -> Hour
+     * - 60% to 100%: Year -> Quarter -> Month -> Week -> Day -> Hour -> Minute (30m down to 1m)
+     * Strips holidays of any stars and ensures uniform styling across all zoom levels.
+     */
+    applyScaleConfig(customColWidth = null) {
+        const g = this.gantt;
+        if (!g) return;
+
+        // Reset global scale_cell_class for hour and day units (marks today, holidays, weekends, work hours)
+        g.templates.scale_cell_class = (date, scale) => {
+            if (!scale) return "";
+            const d = date instanceof Date ? date : new Date(date);
+
+            if (scale.unit === "month") {
+                const m = d.getMonth();
+                if (m === 0) return "year_boundary_cell";
+                if (m % 3 === 0) return "quarter_boundary_cell";
+                return "month_boundary_cell";
+            }
+
+            if (scale.unit === "quarter") {
+                if (d.getMonth() === 0) return "year_boundary_cell";
+                return "quarter_boundary_cell";
+            }
+
+            if (scale.unit !== "minute" && scale.unit !== "hour" && scale.unit !== "day") {
+                return "";
+            }
+
+            const hol = getLithuanianHoliday(d);
+            const isHoliday = Boolean(hol);
+
+            if (scale.unit === "minute") {
+                const isWorkHour = this.isWorkingDateTime(d, scale.step || 15, isHoliday);
+                const m = d.getMinutes();
+                const classes = ["minute_scale_cell"];
+                classes.push(isWorkHour ? "work_hour_scale_cell" : "off_hour_scale_cell");
+                if (m === 0) {
+                    classes.push("hour_boundary_cell");
+                }
+                return classes.join(" ");
+            }
+
+            const today = new Date();
+            const isToday = (
+                d.getFullYear() === today.getFullYear() &&
+                d.getMonth() === today.getMonth() &&
+                d.getDate() === today.getDate()
+            );
+
+            if (scale.unit === "hour") {
+                const isWorkHour = this.isWorkingDateTime(d, scale.step ? scale.step * 60 : 60, isHoliday);
+                if (isToday) {
+                    return isWorkHour ? "today_scale_cell work_hour_scale_cell" : "today_scale_cell off_hour_scale_cell";
+                }
+                if (isHoliday) return "holiday_scale_cell";
+                if (!this.isWorkingDay(d, isHoliday)) return "weekend_scale_cell";
+                return isWorkHour ? "work_hour_scale_cell" : "off_hour_scale_cell";
+            }
+
+            // day unit
+            const classes = [];
+            if (isToday) classes.push("today_scale_cell");
+            if (isHoliday) classes.push("holiday_scale_cell");
+            else if (!this.isWorkingDay(d, isHoliday)) classes.push("weekend_scale_cell");
+
+            if (d.getMonth() === 0 && d.getDate() === 1) classes.push("year_boundary_cell");
+            else if (d.getDate() === 1 && (d.getMonth() % 3 === 0)) classes.push("quarter_boundary_cell");
+            else if (d.getDate() === 1) classes.push("month_boundary_cell");
+
+            return classes.join(" ");
+        };
+
+        const visibleWidth = this.getTimelineVisibleWidth();
+        // Header labels of very wide cells are centred inside the visible part of the cell (see SCSS .gantt_scale_cell > span)
+        if (this.ganttElement && this.ganttElement.el) {
+            this.ganttElement.el.style.setProperty("--gantt-view-w", `${Math.max(120, Math.round(visibleWidth))}px`);
+        }
+        const pxPerDay = getZoomPxPerDay(this.state.zoomLevel, visibleWidth);
+        const pxPerHour = pxPerDay / 24.0;
+        const pxPerMin = pxPerDay / 1440.0;
+
+        // Bounding box fit thresholds aligned with zoomLevel tiers:
+        const canFitDays = this.state.zoomLevel >= 20;
+        const canFitWeeks = this.state.zoomLevel >= 10;
+
+        // 1. Year scale: Metai (%Y, e.g. 2026)
+        const yearScale = {
+            unit: "year",
+            step: 1,
+            format: (date) => {
+                const y = date.getFullYear();
+                return `<span title="${y} metai">${y}</span>`;
+            },
+            css: (date) => "year_scale_cell year_boundary_cell",
+            height: 22,
+        };
+
+        // 2. Quarter scale: Ketvirtis (1, 2, 3, 4)
+        const quarterScale = {
+            unit: "quarter",
+            step: 1,
+            format: (date) => {
+                const q = Math.floor(date.getMonth() / 3) + 1;
+                const fullTitle = `${date.getFullYear()} m. ${q} ketvirtis`;
+                return `<span title="${fullTitle}">${q}</span>`;
+            },
+            css: (date) => (date.getMonth() === 0) ? "quarter_scale_cell year_boundary_cell" : "quarter_scale_cell quarter_boundary_cell",
+            height: 22,
+        };
+
+        // 3. Month scale: Mėnuo (Displays pure month number 1..12 across all zoom levels; full name on hover)
+        const monthWidth = pxPerDay * 30.4375;
+        const monthScale = {
+            unit: "month",
+            step: 1,
+            format: (date) => {
+                const monthNumber = date.getMonth() + 1;
+                const fullTitle = `${date.getFullYear()} m. ${LITHUANIAN_MONTHS[date.getMonth()]}`;
+                if (monthWidth >= 140) {
+                    return `<span title="${fullTitle}">${fullTitle}</span>`;
+                }
+                if (monthWidth >= 70) {
+                    return `<span title="${fullTitle}">${LITHUANIAN_MONTHS[date.getMonth()]}</span>`;
+                }
+                if (monthWidth >= 14) {
+                    return `<span title="${fullTitle}">${monthNumber}</span>`;
+                }
+                if (monthWidth >= 7) {
+                    return `<span title="${fullTitle}" style="font-size: 8px; opacity: 0.85;">${monthNumber}</span>`;
+                }
+                return `<span title="${fullTitle}">·</span>`;
+            },
+            css: (date) => {
+                const m = date.getMonth();
+                if (m === 0) return "month_scale_cell year_boundary_cell";
+                if (m % 3 === 0) return "month_scale_cell quarter_boundary_cell";
+                return "month_scale_cell month_boundary_cell";
+            },
+            height: 22,
+        };
+
+        // 4. Week scale: Savaitė (Displays pure ISO week number 1..52 across all zoom levels; full name on hover)
+        const weekColWidth = pxPerDay * 7;
+        const weekScale = {
+            unit: "week",
+            step: 1,
+            format: (date) => {
+                if (!canFitWeeks) return "";
+                const w = getISOWeekNumber(date);
+                if (weekColWidth < 14) {
+                    return `<span title="${w} savaitė" style="font-size: 9px;">${w}</span>`;
+                }
+                return `<span title="${w} savaitė">${w}</span>`;
+            },
+            css: (date) => canFitWeeks ? "week_scale_cell" : "week_scale_cell no_division_cell",
+            height: 22,
+        };
+
+        // 5. Day scale: Uniform holiday styling with NO star (★), native title tooltip on hover, format "14 Tr" or "14"
+        const canFitWeekdays = pxPerDay >= 40;
+        const dayScale = {
+            unit: "day",
+            step: 1,
+            format: (date) => {
+                if (!canFitDays) return "";
+                const d = date.getDate();
+                const hol = getLithuanianHoliday(date);
+                const wd = canFitWeekdays ? ` ${LITHUANIAN_WEEKDAYS_SHORT[date.getDay()]}` : "";
+                const monthPrefix = pxPerDay >= 240 ? `${LITHUANIAN_MONTHS_SHORT[date.getMonth()]} ` : "";
+                if (hol) {
+                    return `<span class="holiday_day_cell" title="${escapeHtml(hol)}">${monthPrefix}${d}${wd}</span>`;
+                }
+                const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+                const fullDateTitle = `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(d)}`;
+                if (pxPerDay < 14) {
+                    return `<span title="${fullDateTitle}" style="font-size: 9px;">${d}</span>`;
+                }
+                return `<span title="${fullDateTitle}">${monthPrefix}${d}${wd}</span>`;
+            },
+            css: (date) => {
+                if (!canFitDays) return "day_scale_cell no_division_cell";
+                const d = date.getDate();
+                const m = date.getMonth();
+                const classes = ["day_scale_cell"];
+                const today = new Date();
+                if (d === today.getDate() && m === today.getMonth() && date.getFullYear() === today.getFullYear()) {
+                    classes.push("today_scale_cell");
+                }
+                const hol = getLithuanianHoliday(date);
+                const isHoliday = Boolean(hol);
+                if (isHoliday) classes.push("holiday_scale_cell");
+                else if (!this.isWorkingDay(date, isHoliday)) classes.push("weekend_scale_cell");
+
+                if (m === 0 && d === 1) classes.push("year_boundary_cell");
+                else if (d === 1 && m % 3 === 0) classes.push("quarter_boundary_cell");
+                else if (d === 1) classes.push("month_boundary_cell");
+
+                return classes.join(" ");
+            },
+            height: 22,
+        };
+
+        // 6. Hour scale: dynamic 1h / 2h / 3h step based on available width
+        const canFitHours = this.state.zoomLevel >= 50;
+        let hourStep = 1;
+        if (this.state.zoomLevel >= 56 || pxPerHour >= 11) {
+            hourStep = 1;
+        } else if (canFitHours && (pxPerHour * 2) >= 11) {
+            hourStep = 2;
+        } else if (canFitHours) {
+            hourStep = 3;
+        }
+        const hourColWidth = Math.max(14, Math.round(pxPerHour * hourStep));
+
+        const hourScale = {
+            unit: "hour",
+            step: hourStep,
+            format: (date) => {
+                if (!canFitHours) return "";
+                const h = date.getHours();
+                const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+                const nextH = (h + hourStep) % 24;
+                const tooltip = `${pad(h)}:00 – ${pad(nextH)}:00`;
+                if (hourColWidth >= 38) {
+                    return `<span title="${tooltip}">${pad(h)}:00</span>`;
+                }
+                if (hourColWidth < 16) {
+                    return `<span title="${tooltip}" style="font-size: 9px;">${pad(h)}</span>`;
+                }
+                return `<span title="${tooltip}">${h}</span>`;
+            },
+            css: (date) => {
+                if (!canFitHours) return "hour_scale_cell no_division_cell";
+                const h = date.getHours();
+                const classes = ["hour_scale_cell"];
+                if (this.isWorkingDateTime(date, hourStep * 60)) {
+                    classes.push("work_hour_scale_cell");
+                } else {
+                    classes.push("off_hour_scale_cell");
+                }
+                if (h === 0) {
+                    classes.push("day_boundary_cell");
+                }
+                return classes.join(" ");
+            },
+            height: 22,
+        };
+
+        // 7. Minute scale: dynamic 1m, 5m, 15m, 30m step based on available width
+        let minStep = 0;
+        if (this.state.zoomLevel >= 90 || pxPerMin >= 10) {
+            minStep = 1; // 1-minute resolution (00..59) at 90% - 100% zoom
+        } else if (this.state.zoomLevel >= 75 || (pxPerMin * 5) >= 9) {
+            minStep = 5; // 5-minute resolution (:05, :10, :15..:55) at 75% - 85% zoom
+        } else if (this.state.zoomLevel >= 65 || (pxPerMin * 15) >= 9) {
+            minStep = 15; // 15-minute resolution (:15, :30, :45) at 65% - 70% zoom
+        } else if (this.state.zoomLevel >= 60 || (pxPerMin * 30) >= 9) {
+            minStep = 30; // 30-minute resolution (:30) at 60% zoom
+        }
+
+        const canFitMinutes = minStep > 0;
+        const minuteColWidth = canFitMinutes ? Math.max(10, Math.round(pxPerMin * minStep)) : 10;
+
+        const minuteScale = {
+            unit: "minute",
+            step: minStep || 15,
+            format: (date) => {
+                if (!canFitMinutes) return "";
+                const m = date.getMinutes();
+                const h = date.getHours();
+                const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+                const nextM = m + minStep;
+                const endH = nextM >= 60 ? (h + 1) % 24 : h;
+                const endM = nextM % 60;
+                const mark = minStep === 1 ? m : (minuteColWidth >= 28 ? pad(m) : m);
+                const tooltip = `${pad(h)}:${pad(m)} – ${pad(endH)}:${pad(endM)}`;
+                if (minuteColWidth < 14) {
+                    return `<span title="${tooltip}" style="font-size: 9px;">${mark}</span>`;
+                }
+                return `<span title="${tooltip}">${mark}</span>`;
+            },
+            css: (date) => {
+                if (!canFitMinutes) return "minute_scale_cell no_division_cell";
+                const m = date.getMinutes();
+                const classes = ["minute_scale_cell"];
+                if (this.isWorkingDateTime(date, minStep || 15)) {
+                    classes.push("work_hour_scale_cell");
+                } else {
+                    classes.push("off_hour_scale_cell");
+                }
+                if (m === 0) {
+                    classes.push("hour_boundary_cell");
+                }
+                return classes.join(" ");
+            },
+            height: 22,
+        };
+
+        // Sliding 3-row scale header (fixed 66px height across all zoom levels so rows never shift vertically)
+        let scales = [yearScale, quarterScale, monthScale];
+
+        if (canFitMinutes) {
+            // Minute timescale (60% - 100%): [Day, Hour, Minute]
+            scales = [dayScale, hourScale, minuteScale];
+            g.config.time_step = minStep === 1 ? 1 : (minStep || 5);
+            g.config.min_column_width = customColWidth ? Math.max(10, customColWidth) : minuteColWidth;
+        } else if (canFitHours) {
+            // Hourly timescale (50% - 59%): [Month, Day, Hour]
+            scales = [monthScale, dayScale, hourScale];
+            g.config.time_step = 15; // 15-minute precision in hourly view
+            g.config.min_column_width = customColWidth ? Math.max(12, customColWidth) : hourColWidth;
+        } else if (canFitDays) {
+            // Daily timescale (25% - 49%): [Month, Week, Day]
+            scales = [monthScale, weekScale, dayScale];
+            g.config.time_step = 1440;
+            g.config.min_column_width = customColWidth ? Math.max(9, customColWidth) : Math.max(9, Math.round(pxPerDay));
+        } else if (canFitWeeks) {
+            // Weekly timescale (10% - 24%): [Year, Month, Week]
+            scales = [yearScale, monthScale, weekScale];
+            g.config.time_step = 1440;
+            g.config.min_column_width = customColWidth ? Math.max(10, customColWidth) : Math.max(10, Math.round(pxPerDay * 7));
+        } else {
+            // Macro monthly timescale (0% - 9%): [Year, Quarter, Month]
+            scales = [yearScale, quarterScale, monthScale];
+            g.config.time_step = 1440;
+            const defMonthColW = Math.max(14, Math.round(pxPerDay * 30.4375));
+            g.config.min_column_width = customColWidth ? Math.max(14, customColWidth) : defMonthColW;
+        }
+
+        g.config.scales = scales;
+        g.config.duration_unit = "minute";
+        g.config.duration_step = 1;
+        g.config.min_duration = 60 * 1000; // 1 minute (60,000 ms) minimum duration across all scales
+        // Fixed 3-row header height (66px) prevents vertical row jumping while zooming
+        g.config.scale_height = scales.length * 22;
+    }
+
+    /**
+     * Fetch and parse timeline data
+     */
+    async loadTimelineData(customDomain = null) {
+        this.clearHoverHighlight();
+        if (!this.gantt) return;
+
+        try {
+            const domain = customDomain || this.props.domain || [];
+            const sel = String(this.state.selectedProjectId || "active");
+            const isOnlyActive = sel === "active";
+            const isOverdue = sel === "overdue";
+            const isOnlyMo = sel === "only_mo";
+            const isOnlyPo = sel === "only_po";
+            const isOnlyDelivery = sel === "only_delivery";
+            const isSpecialFilter = isOnlyActive || isOverdue || isOnlyMo || isOnlyPo || isOnlyDelivery;
+            const projNum = !isSpecialFilter ? (parseInt(sel, 10) || 0) : 0;
+            const data = await this.orm.call("project.task", "get_all_in_one_timeline_data", [], {
+                project_id: isSpecialFilter ? sel : projNum,
+                only_active: isOnlyActive,
+                only_overdue: isOverdue,
+                only_mo: isOnlyMo,
+                only_po: isOnlyPo,
+                only_delivery: isOnlyDelivery,
+                domain: domain,
+                model_name: this.props.resModel || "project.task",
+            });
+            if (this._isDestroyed || !this.gantt) return;
+
+            this.state.projects = data.projects || [];
+            this.state.hasMrp = Boolean(data.has_mrp);
+            this.state.hasPurchase = Boolean(data.has_purchase);
+            this.state.hasDelivery = Boolean(data.has_delivery);
+            if ((isOnlyMo && !this.state.hasMrp) || (isOnlyPo && !this.state.hasPurchase) || (isOnlyDelivery && !this.state.hasDelivery)) {
+                this.state.selectedProjectId = "0";
+                return await this.loadTimelineData(customDomain);
+            }
+            const canEdit = Boolean(data.can_edit);
+            this.state.canEdit = canEdit;
+            this.state.canTrackTime = Boolean(data.can_track_time);
+            this.gantt.config.readonly = !canEdit;
+            this.gantt.config.drag_move = canEdit;
+            this.gantt.config.drag_resize = canEdit;
+            this.gantt.config.drag_project = canEdit;
+            this.gantt.config.drag_links = canEdit;
+
+            // Preserve scroll position (both in pixel offset and anchor date) and open/closed branch states
+            const scrollPos = this.gantt.getScrollState ? this.gantt.getScrollState() : null;
+            let anchorDate = null;
+            if (scrollPos && scrollPos.x !== undefined && this.gantt.dateFromPos) {
+                const visibleWidth = this.getTimelineVisibleWidth();
+                anchorDate = this.gantt.dateFromPos(scrollPos.x + Math.floor(visibleWidth / 2));
+            }
+            const savedOpenStates = (this._savedViewState && this._savedViewState.openStates)
+                ? this._savedViewState.openStates
+                : null;
+            const openStates = {};
+            if (this.gantt.eachTask) {
+                this.gantt.eachTask((t) => {
+                    openStates[t.id] = t.$open !== undefined ? t.$open : t.open;
+                });
+            }
+
+            if (this._lastAddedParentId && data.tasks) {
+                let currKey = `task_${this._lastAddedParentId}`;
+                while (currKey) {
+                    openStates[currKey] = true;
+                    if (savedOpenStates) savedOpenStates[currKey] = true;
+                    const found = data.tasks.find((t) => t.id === currKey);
+                    currKey = found ? found.parent : null;
+                }
+                this._lastAddedParentId = null;
+            }
+
+            if (!savedOpenStates && this._savedViewState && this._savedViewState.openStates) {
+                savedOpenStates = this._savedViewState.openStates;
+            }
+            if (data.tasks) {
+                const zoomLevel = this.state.zoomLevel;
+                for (const t of data.tasks) {
+                    t.auto_scheduling = false;
+                    if (savedOpenStates && savedOpenStates[t.id] !== undefined) {
+                        t.open = Boolean(savedOpenStates[t.id]);
+                    } else if (openStates[t.id] !== undefined) {
+                        t.open = Boolean(openStates[t.id]);
+                    } else {
+                        t.open = false;
+                    }
+                    if (t.work_start_date && t.work_end_date) {
+                        const { gridStart, gridEnd } = workDatesToVisualGrid(t.work_start_date, t.work_end_date, zoomLevel);
+                        t.start_date = formatOdooDateTime(gridStart);
+                        t.end_date = formatOdooDateTime(gridEnd);
+                        t._established_start = new Date(gridStart);
+                        t._established_end = new Date(gridEnd);
+                        t._established_work_start = t.work_start_date;
+                        t._established_work_end = t.work_end_date;
+                        t._established_alloc_hours = t.allocated_hours;
+                    }
+                }
+            }
+
+            const applyBatchLoad = () => {
+                this.gantt.clearAll();
+                this.gantt.parse({
+                    data: data.tasks || [],
+                    links: data.links || [],
+                });
+                this.ensureTimelineRange();
+            };
+            if (typeof this.gantt.batchUpdate === "function") {
+                this.gantt.batchUpdate(applyBatchLoad);
+            } else {
+                applyBatchLoad();
+                this.gantt.render();
+            }
+
+            if (this._savedViewState) {
+                const saved = this._savedViewState;
+                this._savedViewState = null;
+                this._initialScrollDone = true;
+
+                const restoreViewport = () => {
+                    if (!this.gantt) return;
+                    const visWidth = this.getTimelineVisibleWidth();
+                    if (saved.centerDate) {
+                        const cDate = new Date(saved.centerDate);
+                        const pos = this.safePosFromDate(cDate);
+                        if (pos >= 0 && this.gantt.scrollTo) {
+                            const targetX = Math.max(0, Math.round(pos - visWidth / 2));
+                            this.gantt.scrollTo(targetX, saved.scrollY || 0);
+                            this.renderTodayMarker();
+                            return;
+                        }
+                    }
+                    if (typeof saved.scrollX === "number" && this.gantt.scrollTo) {
+                        this.gantt.scrollTo(saved.scrollX, saved.scrollY || 0);
+                        this.renderTodayMarker();
+                    }
+                };
+
+                restoreViewport();
+                this._requestAnimationFrame(restoreViewport);
+            } else if (this._projectChanged) {
+                this._projectChanged = false;
+                this.navigateToday(true);
+            } else if (!this._initialScrollDone) {
+                this._initialScrollDone = true;
+                this.navigateToday(true);
+            } else if (anchorDate) {
+                const visibleWidth = this.getTimelineVisibleWidth();
+                const newPos = this.safePosFromDate(anchorDate);
+                if (newPos >= 0 && this.gantt.scrollTo) {
+                    this.gantt.scrollTo(Math.max(0, newPos - Math.floor(visibleWidth / 2)), scrollPos ? scrollPos.y : 0);
+                } else if (scrollPos && (scrollPos.x !== undefined || scrollPos.y !== undefined)) {
+                    this.gantt.scrollTo(scrollPos.x, scrollPos.y);
+                }
+            } else if (scrollPos && (scrollPos.x !== undefined || scrollPos.y !== undefined)) {
+                this.gantt.scrollTo(scrollPos.x, scrollPos.y);
+            }
+        } catch (err) {
+            const errMsg = err?.data?.message || err?.message || String(err);
+            this.notification.add(_t("Nepavyko užkrauti laiko juostos duomenų: ") + errMsg, { type: "danger" });
+        }
+    }
+
+    /**
+     * Resolve Odoo model and record ID for a Gantt row/bar item.
+     */
+    _getRecordModelAndId(task) {
+        if (!task || task.is_group || !task.odoo_id) {
+            return null;
+        }
+        if (task.is_po) return { resModel: "purchase.order", resId: task.odoo_id };
+        if (task.is_mo) return { resModel: "mrp.production", resId: task.odoo_id };
+        if (task.is_delivery) return { resModel: "stock.picking", resId: task.odoo_id };
+        if (task.is_project) return { resModel: "project.project", resId: task.odoo_id };
+        if (task.is_milestone) return { resModel: "project.milestone", resId: task.odoo_id };
+        return { resModel: "project.task", resId: task.odoo_id };
+    }
+
+    /**
+     * Open standard Odoo Task Form (Full view with chatter, normal menus, breadcrumbs)
+     */
+    openTaskFormDialog(taskId) {
+        this.saveViewState(true);
+        this.actionService.doAction({
+            type: "ir.actions.act_window",
+            res_model: "project.task",
+            res_id: taskId,
+            views: [[false, "form"]],
+            target: "current",
+        });
+    }
+
+    /**
+     * Open standard Odoo Purchase Order Form (Full view)
+     */
+    openPoFormDialog(poId) {
+        this.saveViewState(true);
+        this.actionService.doAction({
+            type: "ir.actions.act_window",
+            res_model: "purchase.order",
+            res_id: poId,
+            views: [[false, "form"]],
+            target: "current",
+        });
+    }
+
+    /**
+     * Open standard Odoo Manufacturing Order Form (Full view)
+     */
+    openMoFormDialog(moId) {
+        this.saveViewState(true);
+        this.actionService.doAction({
+            type: "ir.actions.act_window",
+            res_model: "mrp.production",
+            res_id: moId,
+            views: [[false, "form"]],
+            target: "current",
+        });
+    }
+
+    /**
+     * Open standard Odoo Delivery / Stock Picking Form (Full view)
+     */
+    openDeliveryFormDialog(deliveryId) {
+        this.saveViewState(true);
+        this.actionService.doAction({
+            type: "ir.actions.act_window",
+            res_model: "stock.picking",
+            res_id: deliveryId,
+            views: [[false, "form"]],
+            target: "current",
+        });
+    }
+
+    /**
+     * Open standard Odoo Milestone Form (Full view)
+     */
+    openMilestoneFormDialog(milestoneId) {
+        this.saveViewState(true);
+        this.actionService.doAction({
+            type: "ir.actions.act_window",
+            res_model: "project.milestone",
+            res_id: milestoneId,
+            views: [[false, "form"]],
+            target: "current",
+        });
+    }
+
+    /**
+     * Open standard Odoo Project Form (Full view with chatter, normal menus, breadcrumbs)
+     */
+    openProjectFormDialog(projectId) {
+        this.saveViewState(true);
+        this.actionService.doAction({
+            type: "ir.actions.act_window",
+            res_model: "project.project",
+            res_id: projectId,
+            views: [[false, "form"]],
+            target: "current",
+        });
+    }
+
+    /**
+     * Ensures the timeline timescale covers today, all tasks, and generous past/future buffers.
+     * At 10% zoom, guarantees at least 5 years backward and 5 years forward so the 6-year viewport
+     * (3 years backward, 3 years forward from center) is fully visible and horizontally scrollable in both directions.
+     */
+    ensureTimelineRange(extraTaskStart = null, extraTaskEnd = null) {
+        const g = this.gantt;
+        if (!g) return;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let minDate = null;
+        let maxDate = null;
+
+        if (extraTaskStart) {
+            const s = extraTaskStart instanceof Date ? extraTaskStart : new Date(extraTaskStart);
+            if (!isNaN(s.getTime())) {
+                minDate = new Date(s);
+                maxDate = new Date(s);
+            }
+        }
+        if (extraTaskEnd) {
+            const e = extraTaskEnd instanceof Date ? extraTaskEnd : new Date(extraTaskEnd);
+            if (!isNaN(e.getTime())) {
+                if (!minDate || e < minDate) minDate = new Date(e);
+                if (!maxDate || e > maxDate) maxDate = new Date(e);
+            }
+        }
+
+        const isHighZoom = (this.state.zoomLevel >= 60);
+        if (g.eachTask) {
+            const hasFocalSpan = Boolean(extraTaskStart && extraTaskEnd);
+            const focalCenterMs = hasFocalSpan ? Math.round((new Date(extraTaskStart).getTime() + new Date(extraTaskEnd).getTime()) / 2) : 0;
+            const maxFocalDistMs = 35 * 86400000;
+
+            g.eachTask((task) => {
+                if (task.start_date) {
+                    const s = new Date(task.start_date);
+                    if (!isNaN(s.getTime())) {
+                        if (!isHighZoom || !hasFocalSpan || Math.abs(s.getTime() - focalCenterMs) <= maxFocalDistMs) {
+                            if (!minDate || s < minDate) minDate = s;
+                            if (!maxDate || s > maxDate) maxDate = s;
+                        }
+                    }
+                }
+                if (task.end_date) {
+                    const e = new Date(task.end_date);
+                    if (!isNaN(e.getTime())) {
+                        if (!isHighZoom || !hasFocalSpan || Math.abs(e.getTime() - focalCenterMs) <= maxFocalDistMs) {
+                            if (!minDate || e < minDate) minDate = e;
+                            if (!maxDate || e > maxDate) maxDate = e;
+                        }
+                    }
+                }
+                if (task.has_deadline_delay && task.deadline_end) {
+                    // The red tail ends at the deadline: keep it inside the visible scale so it is never clipped.
+                    const dl = task.deadline_end instanceof Date ? task.deadline_end : new Date(String(task.deadline_end).replace(/-/g, "/"));
+                    if (!isNaN(dl.getTime())) {
+                        if (!isHighZoom || !hasFocalSpan || Math.abs(dl.getTime() - focalCenterMs) <= maxFocalDistMs) {
+                            if (!maxDate || dl > maxDate) maxDate = dl;
+                        }
+                    }
+                }
+            });
+        }
+
+        if (!minDate) minDate = new Date(today);
+        if (!maxDate) maxDate = new Date(today);
+
+        // Include today in boundaries if appropriate (for high zoom >= 250%, only if today is within 21 days of tasks to avoid immense column bloat)
+        let effectiveMin = new Date(minDate);
+        let effectiveMax = new Date(maxDate);
+        const distFromToday = Math.min(
+            Math.abs(today.getTime() - minDate.getTime()),
+            Math.abs(today.getTime() - maxDate.getTime())
+        );
+        if (!isHighZoom || distFromToday <= 21 * 86400000) {
+            if (today < effectiveMin) {
+                effectiveMin = new Date(today);
+            }
+            if (today > effectiveMax) {
+                effectiveMax = new Date(today);
+            }
+        }
+
+        const visibleWidth = this.getTimelineVisibleWidth();
+        const pxPerDay = getZoomPxPerDay(this.state.zoomLevel, visibleWidth);
+        const canFitDays = this.state.zoomLevel >= 20;
+        const canFitHours = this.state.zoomLevel >= 50;
+
+        let startDate;
+        let endDate;
+
+        if (this.state.zoomLevel >= 88) {
+            // Ultra-micro zoom (1-minute / 5-minute resolution): 2 days past, 4 days future buffer
+            startDate = new Date(effectiveMin.getFullYear(), effectiveMin.getMonth(), effectiveMin.getDate() - 2, 0, 0, 0);
+            endDate = new Date(effectiveMax.getFullYear(), effectiveMax.getMonth(), effectiveMax.getDate() + 4, 23, 59, 59);
+        } else if (this.state.zoomLevel >= 65) {
+            // High-precision minute zoom (15m / 30m): 7 days past, 14 days future buffer
+            startDate = new Date(effectiveMin.getFullYear(), effectiveMin.getMonth(), effectiveMin.getDate() - 7, 0, 0, 0);
+            endDate = new Date(effectiveMax.getFullYear(), effectiveMax.getMonth(), effectiveMax.getDate() + 14, 23, 59, 59);
+        } else if (this.state.zoomLevel >= 50 || canFitHours) {
+            // Hourly zoom: 21 days past, 45 days future buffer (soft transition from daily scale)
+            startDate = new Date(effectiveMin.getFullYear(), effectiveMin.getMonth(), effectiveMin.getDate() - 21, 0, 0, 0);
+            endDate = new Date(effectiveMax.getFullYear(), effectiveMax.getMonth(), effectiveMax.getDate() + 45, 23, 59, 59);
+        } else if (!canFitDays) {
+            // Macro multi-year zoom (0% - 24%): 3 years backward, 3 years forward strictly aligned to Jan 1
+            startDate = new Date(effectiveMin.getFullYear() - 3, 0, 1, 0, 0, 0);
+            endDate = new Date(effectiveMax.getFullYear() + 3, 11, 31, 23, 59, 59);
+        } else {
+            // Detailed daily zoom (25% - 49%): 1 year backward, 2 years forward strictly aligned to Jan 1
+            startDate = new Date(effectiveMin.getFullYear() - 1, 0, 1, 0, 0, 0);
+            endDate = new Date(effectiveMax.getFullYear() + 2, 11, 31, 23, 59, 59);
+        }
+
+        // Ensure enough left buffer before Today so navigateToday() can center Today horizontally
+        if (!isHighZoom || distFromToday <= 21 * 86400000) {
+            const halfViewDays = Math.min(365, Math.max(1, Math.ceil((visibleWidth * 0.55) / Math.max(0.25, pxPerDay))));
+            const minCenteredStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - halfViewDays, 0, 0, 0);
+            if (minCenteredStart < startDate) {
+                startDate = minCenteredStart;
+            }
+        }
+
+        g.config.start_date = startDate;
+        g.config.end_date = endDate;
+    }
+
+    /**
+     * Dynamically extends the timescale into the past and maintains smooth visual scroll.
+     */
+    expandTimelineToPast(stepPx = 0) {
+        const g = this.gantt;
+        if (!g || !g.config.start_date) return;
+        if (this._isExpandingRange) return;
+        this._isExpandingRange = true;
+
+        try {
+            const oldStart = new Date(g.config.start_date);
+            const newStart = new Date(oldStart);
+            const visibleWidth = this.getTimelineVisibleWidth();
+            const pxPerDay = getZoomPxPerDay(this.state.zoomLevel, visibleWidth);
+            const canFitDays = this.state.zoomLevel >= 20;
+            if (pxPerDay >= 350) {
+                const stepDays = pxPerDay >= 2000 ? 1 : 3;
+                newStart.setDate(newStart.getDate() - stepDays);
+            } else {
+                const stepYears = !canFitDays ? 2 : 1;
+                newStart.setFullYear(newStart.getFullYear() - stepYears);
+                newStart.setMonth(0, 1);
+                newStart.setHours(0, 0, 0, 0);
+            }
+
+            const scrollState = g.getScrollState ? g.getScrollState() : { x: 0, y: 0 };
+            g.config.start_date = newStart;
+            g.render();
+
+            const addedPx = this.safePosFromDate(oldStart);
+            const newScrollX = Math.max(0, scrollState.x + (addedPx > 0 ? addedPx : 0) - stepPx);
+            g.scrollTo(newScrollX, scrollState.y);
+            this.renderTodayMarker();
+        } finally {
+            this._isExpandingRange = false;
+        }
+    }
+
+    /**
+     * Dynamically extends the timescale into the future.
+     */
+    expandTimelineToFuture(stepPx = 0) {
+        const g = this.gantt;
+        if (!g || !g.config.end_date) return;
+        if (this._isExpandingRange) return;
+        this._isExpandingRange = true;
+
+        try {
+            const oldEnd = new Date(g.config.end_date);
+            const newEnd = new Date(oldEnd);
+            const visibleWidth = this.getTimelineVisibleWidth();
+            const pxPerDay = getZoomPxPerDay(this.state.zoomLevel, visibleWidth);
+            const canFitDays = this.state.zoomLevel >= 20;
+            if (pxPerDay >= 350) {
+                const stepDays = pxPerDay >= 2000 ? 1 : 3;
+                newEnd.setDate(newEnd.getDate() + stepDays);
+            } else {
+                const stepYears = !canFitDays ? 2 : 1;
+                newEnd.setFullYear(newEnd.getFullYear() + stepYears);
+                newEnd.setMonth(11, 31);
+                newEnd.setHours(23, 59, 59);
+            }
+
+            const scrollState = g.getScrollState ? g.getScrollState() : { x: 0, y: 0 };
+            g.config.end_date = newEnd;
+            g.render();
+
+            const newScrollX = scrollState.x + stepPx;
+            g.scrollTo(newScrollX, scrollState.y);
+            this.renderTodayMarker();
+        } finally {
+            this._isExpandingRange = false;
+        }
+    }
+
+    /**
+     * Render dynamic Today vertical line marker on timeline
+     */
+    renderTodayMarker() {
+        if (!this.gantt || !this.ganttElement || !this.ganttElement.el) return;
+        const g = this.gantt;
+        const dataArea = this.ganttElement.el.querySelector(".gantt_data_area");
+        if (!dataArea) return;
+
+        let marker = dataArea.querySelector(".custom_today_marker");
+        try {
+            const today = new Date();
+            if (this.state.zoomLevel < 60) {
+                today.setHours(12, 0, 0, 0);
+            }
+            const leftPos = this.safePosFromDate(today);
+            if (leftPos >= 0) {
+                if (!marker) {
+                    marker = document.createElement("div");
+                    marker.className = "custom_today_marker";
+                    dataArea.appendChild(marker);
+                }
+                const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+                const todayStr = `${today.getFullYear()}.${pad(today.getMonth() + 1)}.${pad(today.getDate())}`;
+                marker.innerHTML = `<span class="today_marker_label">${todayStr}</span>`;
+                marker.style.left = `${leftPos}px`;
+                marker.style.height = `${Math.max(dataArea.offsetHeight, dataArea.scrollHeight)}px`;
+                marker.style.display = "block";
+            } else if (marker) {
+                marker.style.display = "none";
+            }
+        } catch {
+            if (marker) marker.style.display = "none";
+        }
+    }
+
+    /**
+     * Undo System: push action to stack and revert previous state
+     */
+    pushUndo(action) {
+        if (!this.undoStack) this.undoStack = [];
+        this.undoStack.push(action);
+        if (this.undoStack.length > 50) {
+            this.undoStack.shift();
+        }
+        this.state.undoCount = this.undoStack.length;
+    }
+
+    async undoAction() {
+        if (!this.state.canEdit) {
+            return;
+        }
+        if (!this.undoStack || !this.undoStack.length) {
+            this.notification.add(_t("Nėra veiksmų atšaukimui"), { type: "warning" });
+            return;
+        }
+
+        const action = this.undoStack.pop();
+        this.state.undoCount = this.undoStack.length;
+
+        try {
+            if (action.type === "schedule") {
+                await this.orm.call("project.task", "save_timeline_batch_schedule", [action.previous]);
+                await this.loadTimelineData();
+            } else if (action.type === "link_add") {
+                await this.orm.call("project.task", "remove_timeline_dependency", [
+                    action.sourceId,
+                    action.targetId,
+                ]);
+                await this.loadTimelineData();
+            } else if (action.type === "link_delete") {
+                await this.orm.call("project.task", "add_timeline_dependency", [
+                    action.sourceId,
+                    action.targetId,
+                ]);
+                await this.loadTimelineData();
+            }
+        } catch (err) {
+            const errMsg = err?.data?.message || err?.message || String(err);
+            this.notification.add(_t("Klaida atšaukiant: ") + errMsg, { type: "danger" });
+        }
+    }
+
+    /**
+     * Toolbar Handlers
+     */
+    async onProjectChange(e) {
+        const val = String(e.target.value || "0");
+        this.state.selectedProjectId = val;
+        this._projectChanged = true;
+        await this.loadTimelineData();
+        if (val === "overdue" || val === "only_mo" || val === "only_po" || val === "only_delivery") {
+            this.navigateToday();
+        }
+        this._scheduleSaveViewState();
+    }
+
+    zoomIn(focalDate = null, focalOffset = null, stepSize = 5) {
+        const validFocalDate = (focalDate instanceof Date && !isNaN(focalDate.getTime())) ? focalDate : null;
+        const step = Math.max(1, Number(stepSize) || 5);
+        const cur = Number(this.state.zoomLevel) || 0;
+        const nextLevel = Math.min(100, step === 5 ? (Math.floor(cur / 5) * 5 + 5) : (cur + step));
+        this.setZoom(nextLevel, validFocalDate, null, null, focalOffset);
+    }
+
+    zoomOut(focalDate = null, focalOffset = null, stepSize = 5) {
+        const validFocalDate = (focalDate instanceof Date && !isNaN(focalDate.getTime())) ? focalDate : null;
+        const step = Math.max(1, Number(stepSize) || 5);
+        const cur = Number(this.state.zoomLevel) || 0;
+        const prevLevel = Math.max(0, step === 5 ? (Math.ceil(cur / 5) * 5 - 5) : (cur - step));
+        this.setZoom(prevLevel, validFocalDate, null, null, focalOffset);
+    }
+
+    zoomToDays() {
+        this.setZoom(20);
+    }
+
+    setZoom(level, customFocalDate = null, customScrollY = null, itemSpan = null, customFocalOffset = null) {
+        const g = this.gantt;
+        if (!g) {
+            this.state.zoomLevel = level;
+            return;
+        }
+
+        this._isZooming = true;
+        this.clearHoverHighlight();
+
+        try {
+            const visibleWidth = this.getTimelineVisibleWidth();
+            const scrollState = g.getScrollState ? g.getScrollState() : { x: 0, y: 0 };
+            let targetScrollY = (customScrollY !== null && customScrollY !== undefined) ? customScrollY : scrollState.y;
+
+            const leftMargin = Math.min(80, Math.max(40, Math.round(visibleWidth * 0.06)));
+
+            let focalDate = (customFocalDate instanceof Date && !isNaN(customFocalDate.getTime())) ? customFocalDate : null;
+            let focalOffset = (typeof customFocalOffset === "number" && !isNaN(customFocalOffset)) ? customFocalOffset : null;
+
+            // 1. If explicit itemSpan is provided (e.g. from fitToScreen), anchor to itemSpan.minStart
+            if (!focalDate && itemSpan && itemSpan.minStart instanceof Date) {
+                focalDate = new Date(itemSpan.minStart);
+                focalOffset = leftMargin;
+            }
+
+            // 2. If zooming rapidly via +/- keys or buttons, reuse the active anchor
+            if (!focalDate && this._zoomAnchorDate && this._zoomResetTimer) {
+                focalDate = new Date(this._zoomAnchorDate);
+                focalOffset = (typeof this._zoomAnchorOffset === "number") ? this._zoomAnchorOffset : Math.round(visibleWidth / 2);
+            }
+
+            // 3. Smart Anchor Selection: Selected Task -> Visible Task / Today -> Viewport Center
+            if (!focalDate && !itemSpan) {
+                let selectedTask = null;
+                const selectedId = g.getSelectedId ? g.getSelectedId() : null;
+                if (selectedId && g.isTaskExists(selectedId)) {
+                    selectedTask = g.getTask(selectedId);
+                }
+
+                if (selectedTask) {
+                    const taskPos = (typeof g.getTaskPosition === "function") ? g.getTaskPosition(selectedTask) : null;
+                    const isTaskVisible = taskPos && (
+                        (taskPos.left + (taskPos.width || 0)) >= (scrollState.x - 100) &&
+                        taskPos.left <= (scrollState.x + visibleWidth + 100)
+                    );
+
+                    if (isTaskVisible) {
+                        let taskStart = parseWorkDateStr(selectedTask.work_start_date) || (selectedTask.start_date ? new Date(selectedTask.start_date) : null);
+                        if (typeof g.getChildren === "function") {
+                            const encompassStart = (pId) => {
+                                const children = g.getChildren(pId) || [];
+                                for (const cId of children) {
+                                    const child = g.getTask(cId);
+                                    if (child) {
+                                        const cs = parseWorkDateStr(child.work_start_date) || (child.start_date ? new Date(child.start_date) : null);
+                                        if (cs && (!taskStart || cs < taskStart)) {
+                                            taskStart = cs;
+                                        }
+                                        encompassStart(cId);
+                                    }
+                                }
+                            };
+                            encompassStart(selectedTask.id);
+                        }
+
+                        if (taskStart instanceof Date && !isNaN(taskStart.getTime())) {
+                            focalDate = taskStart;
+                            const taskPx = this.safePosFromDate(taskStart);
+                            const actualOffset = taskPx - scrollState.x;
+                            focalOffset = (actualOffset >= 20 && actualOffset <= visibleWidth - 20)
+                                ? actualOffset
+                                : Math.round(visibleWidth / 2);
+                            if (taskPos && taskPos.top !== undefined && customScrollY === null) {
+                                targetScrollY = Math.max(0, taskPos.top - 80);
+                            }
+                        }
+                    }
+                }
+
+                // Priority 2: Earliest task currently visible in the viewport or Today!
+                if (!focalDate) {
+                    const viewLeft = scrollState.x;
+                    const viewRight = scrollState.x + visibleWidth;
+                    let bestCandidateDate = null;
+                    let minOffsetFromLeft = Infinity;
+
+                    if (g.eachTask) {
+                        g.eachTask((t) => {
+                            const sDate = parseWorkDateStr(t.work_start_date) || (t.start_date ? new Date(t.start_date) : null);
+                            const eDate = parseWorkDateStr(t.work_end_date) || (t.end_date ? new Date(t.end_date) : null);
+                            if (!sDate || isNaN(sDate.getTime())) return;
+
+                            const sPx = this.safePosFromDate(sDate);
+                            const ePx = eDate ? this.safePosFromDate(eDate) : sPx;
+                            if (sPx < 0 && ePx < 0) return;
+
+                            if (ePx >= viewLeft - 20 && sPx <= viewRight + 20) {
+                                const dist = (sPx >= viewLeft) ? (sPx - viewLeft) : Math.abs(viewLeft - sPx) * 2;
+                                if (dist < minOffsetFromLeft) {
+                                    minOffsetFromLeft = dist;
+                                    bestCandidateDate = sDate;
+                                }
+                            }
+                        });
+                    }
+
+                    // Check if Today marker is visible in the viewport
+                    const today = new Date();
+                    if (this.state.zoomLevel < 60) today.setHours(12, 0, 0, 0);
+                    const todayPx = this.safePosFromDate(today);
+                    if (todayPx >= viewLeft - 20 && todayPx <= viewRight + 20) {
+                        const todayDist = Math.max(0, todayPx - viewLeft);
+                        if (!bestCandidateDate || todayDist <= minOffsetFromLeft) {
+                            bestCandidateDate = today;
+                        }
+                    }
+
+                    if (bestCandidateDate instanceof Date && !isNaN(bestCandidateDate.getTime())) {
+                        focalDate = bestCandidateDate;
+                        const candPx = this.safePosFromDate(bestCandidateDate);
+                        const actualOffset = candPx - scrollState.x;
+                        focalOffset = (actualOffset >= 20 && actualOffset <= visibleWidth - 20)
+                            ? actualOffset
+                            : Math.round(visibleWidth / 2);
+                    }
+                }
+
+                // Priority 3: Horizontal center of viewport fallback
+                if (!focalDate && g.dateFromPos) {
+                    const centerOffset = Math.round(visibleWidth / 2);
+                    const centerPx = scrollState.x + centerOffset;
+                    const centerDate = g.dateFromPos(centerPx);
+                    if (centerDate instanceof Date && !isNaN(centerDate.getTime())) {
+                        focalDate = centerDate;
+                        focalOffset = centerOffset;
+                    }
+                }
+
+                // Cache anchor for rapid +/- clicking or keyboard bursts
+                if (focalDate) {
+                    this._zoomAnchorDate = new Date(focalDate);
+                    this._zoomAnchorOffset = focalOffset;
+                }
+            }
+
+            this._clearTimeout(this._zoomResetTimer);
+            this._zoomResetTimer = this._setTimeout(() => {
+                this._zoomAnchorDate = null;
+                this._zoomAnchorOffset = null;
+                this._zoomResetTimer = null;
+            }, 600);
+
+            if (!focalDate) {
+                focalDate = new Date();
+                focalOffset = Math.round(visibleWidth / 2);
+            }
+            if (focalOffset === null) {
+                focalOffset = Math.round(visibleWidth / 2);
+            }
+
+            // 4. Apply the new zoom level and reconfigure scale & range in a single batch render
+            this._renderCache = null;
+            this.state.zoomLevel = level;
+            const applyZoomBatch = () => {
+                this.applyScaleConfig();
+
+                if (g.eachTask) {
+                    g.eachTask((t) => {
+                        if (t.work_start_date && t.work_end_date) {
+                            const { gridStart, gridEnd } = workDatesToVisualGrid(t.work_start_date, t.work_end_date, level);
+                            t.start_date = gridStart;
+                            t.end_date = gridEnd;
+                            if (t._established_work_start && t._established_work_end) {
+                                const estGrid = workDatesToVisualGrid(t._established_work_start, t._established_work_end, level);
+                                t._established_start = estGrid.gridStart;
+                                t._established_end = estGrid.gridEnd;
+                            } else {
+                                t._established_start = new Date(gridStart);
+                                t._established_end = new Date(gridEnd);
+                            }
+                        }
+                    });
+                }
+
+                this.ensureTimelineRange(
+                    (itemSpan && itemSpan.minStart) ? itemSpan.minStart : focalDate,
+                    (itemSpan && itemSpan.maxEnd) ? itemSpan.maxEnd : focalDate
+                );
+            };
+            if (typeof g.batchUpdate === "function") {
+                g.batchUpdate(applyZoomBatch);
+            } else {
+                applyZoomBatch();
+                g.render();
+            }
+
+            // 5. Keep the viewport anchored on focalDate at focalOffset without jumping
+            const applyScroll = () => {
+                if (!g.scrollTo) return;
+                const curVisWidth = this.getTimelineVisibleWidth();
+
+                if (itemSpan && itemSpan.minStart && itemSpan.maxEnd) {
+                    const sPx = this.safePosFromDate(itemSpan.minStart);
+                    let finalY = targetScrollY;
+                    if (itemSpan.targetId && g.isTaskExists(itemSpan.targetId) && typeof g.getTaskPosition === "function") {
+                        const tObj = g.getTask(itemSpan.targetId);
+                        const tPos = g.getTaskPosition(tObj);
+                        if (tPos && tPos.top !== undefined) {
+                            finalY = Math.max(0, tPos.top - 80);
+                        }
+                    }
+
+                    if (sPx >= 0) {
+                        const leftMargin = Math.min(80, Math.max(40, Math.round(curVisWidth * 0.06)));
+                        const targetScrollX = Math.max(0, Math.round(sPx - leftMargin));
+                        g.scrollTo(targetScrollX, finalY);
+                        this.renderTodayMarker();
+                        return;
+                    } else if (focalDate && g.showDate) {
+                        g.showDate(focalDate);
+                        g.scrollTo(undefined, finalY);
+                        this.renderTodayMarker();
+                        return;
+                    }
+                }
+
+                if (focalDate) {
+                    const newPos = this.safePosFromDate(focalDate);
+                    if (newPos >= 0) {
+                        const targetScrollX = Math.max(0, Math.round(newPos - focalOffset));
+                        g.scrollTo(targetScrollX, targetScrollY);
+                    } else if (g.showDate) {
+                        g.showDate(focalDate);
+                    }
+                }
+                this.renderTodayMarker();
+            };
+
+            applyScroll();
+            this._requestAnimationFrame(() => {
+                applyScroll();
+                this._isZooming = false;
+                this._scheduleSaveViewState();
+            });
+        } catch (err) {
+            this._isZooming = false;
+            if (this.notification) {
+                this.notification.add(_t("Klaida keičiant mastelį: ") + (err?.data?.message || err?.message || String(err)), { type: "danger" });
+            }
+        }
+    }
+
+    /**
+     * Helper to get the exact visible pixel width of the timeline chart area (viewport)
+     */
+    getTimelineVisibleWidth() {
+        if (this.ganttElement && this.ganttElement.el) {
+            const taskContainer = this.ganttElement.el.querySelector(".gantt_task");
+            if (taskContainer && taskContainer.clientWidth > 50) {
+                setTimelineViewportWidth(taskContainer.clientWidth);
+                return taskContainer.clientWidth;
+            }
+            const totalWidth = this.ganttElement.el.clientWidth;
+            const gridWidth = (this.gantt && this.gantt.config && this.gantt.config.grid_width) || 440;
+            if (totalWidth > gridWidth + 50) {
+                setTimelineViewportWidth(totalWidth - gridWidth);
+                return totalWidth - gridWidth;
+            }
+        }
+        return 800;
+    }
+
+    /**
+     * Centers the viewport directly on today's red line marker.
+     */
+    navigateToday(resetVerticalScroll = false) {
+        if (!this.gantt) return;
+        const g = this.gantt;
+        const today = new Date();
+        if (this.state.zoomLevel < 60) {
+            today.setHours(12, 0, 0, 0);
+        }
+
+        this._zoomAnchorDate = null;
+        this._zoomAnchorOffset = null;
+        if (this._zoomResetTimer) {
+            clearTimeout(this._zoomResetTimer);
+            this._zoomResetTimer = null;
+        }
+
+        // Always ensure today is well within the timeline range with sufficient left-side margin to center
+        const curWidth = this.getTimelineVisibleWidth();
+        let todayPx = this.safePosFromDate(today);
+        if (todayPx < Math.round(curWidth / 2)) {
+            this.ensureTimelineRange(today, today);
+            g.render();
+        }
+
+        const scrollAndCenterToday = () => {
+            this.renderTodayMarker();
+            const curVisWidth = this.getTimelineVisibleWidth();
+            const curTodayPx = this.safePosFromDate(today);
+
+            if (curTodayPx >= 0 && g.scrollTo) {
+                // Center Today marker horizontally so both past/overdue and upcoming work are visible
+                const targetX = Math.max(0, Math.round(curTodayPx - curVisWidth / 2));
+                const scrollState = g.getScrollState ? g.getScrollState() : { y: 0 };
+                const targetY = (resetVerticalScroll === true) ? 0 : scrollState.y;
+                g.scrollTo(targetX, targetY);
+            } else if (g.showDate) {
+                g.showDate(today);
+            }
+        };
+
+        scrollAndCenterToday();
+        this._requestAnimationFrame(() => {
+            scrollAndCenterToday();
+            this._setTimeout(() => {
+                scrollAndCenterToday();
+                this._scheduleSaveViewState();
+            }, 50);
+        });
+    }
+
+    /**
+     * Resets the view to the default overview: 0% scale, all items collapsed (Suskleisti), centered on Today.
+     */
+    resetView() {
+        if (!this.gantt) return;
+        const g = this.gantt;
+        this._isZooming = true;
+        this._zoomAnchorDate = null;
+        this._zoomAnchorOffset = null;
+        this._clearTimeout(this._zoomResetTimer);
+        this._zoomResetTimer = null;
+
+        try {
+            if (g.unselectTask) {
+                g.unselectTask();
+            }
+            this.state.zoomLevel = DEFAULT_OVERVIEW_ZOOM;
+            this.applyScaleConfig();
+
+            if (g.eachTask) {
+                g.eachTask((task) => {
+                    task.$open = false;
+                    task.open = false;
+                    if (task.work_start_date && task.work_end_date) {
+                        const { gridStart, gridEnd } = workDatesToVisualGrid(
+                            task.work_start_date,
+                            task.work_end_date,
+                            DEFAULT_OVERVIEW_ZOOM
+                        );
+                        task.start_date = gridStart;
+                        task.end_date = gridEnd;
+                        if (task._established_work_start && task._established_work_end) {
+                            const estGrid = workDatesToVisualGrid(task._established_work_start, task._established_work_end, DEFAULT_OVERVIEW_ZOOM);
+                            task._established_start = estGrid.gridStart;
+                            task._established_end = estGrid.gridEnd;
+                        } else {
+                            task._established_start = new Date(gridStart);
+                            task._established_end = new Date(gridEnd);
+                        }
+                    }
+                });
+            }
+
+            const today = new Date();
+            today.setHours(12, 0, 0, 0);
+            this.ensureTimelineRange(today, today);
+            g.render();
+            this.navigateToday(true);
+        } finally {
+            this._setTimeout(() => {
+                this._isZooming = false;
+                this.saveViewState();
+            }, 80);
+        }
+    }
+
+    expandAll() {
+        if (this.gantt) {
+            this.gantt.eachTask((task) => {
+                task.$open = true;
+                task.open = true;
+            });
+            this.gantt.render();
+            this._scheduleSaveViewState();
+        }
+    }
+
+    collapseAll() {
+        if (this.gantt) {
+            this.gantt.eachTask((task) => {
+                task.$open = false;
+                task.open = false;
+            });
+            this.gantt.render();
+            this._scheduleSaveViewState();
+        }
+    }
+
+    /**
+     * Fit selected sidebar item (project, milestone, task, or sub-subtask) to the timeline screen.
+     * Calculates the item's true working span across candidate zoom levels (100% down to 0%)
+     * and selects the highest zoom level where the bar fits comfortably inside ~65% of the viewport width,
+     * centering horizontally on the item's bar and vertically on its row.
+     */
+    fitToScreen(targetId = null) {
+        if (!this.gantt) return;
+        const g = this.gantt;
+
+        const validTargetId = (typeof targetId === "string" || typeof targetId === "number") ? targetId : null;
+
+        let targetTask = null;
+        if (validTargetId && g.isTaskExists(validTargetId)) {
+            targetTask = g.getTask(validTargetId);
+        } else {
+            const selectedId = g.getSelectedId ? g.getSelectedId() : null;
+            if (selectedId && g.isTaskExists(selectedId)) {
+                targetTask = g.getTask(selectedId);
+            }
+        }
+
+        if (!targetTask) {
+            return;
+        }
+
+        let minWorkStart = parseWorkDateStr(targetTask.work_start_date) || new Date(targetTask.start_date);
+        let maxWorkEnd = parseWorkDateStr(targetTask.work_end_date) || new Date(targetTask.end_date);
+        let maxDeadlineEnd = null;
+
+        if (targetTask.has_deadline_delay && targetTask.deadline_end) {
+            const tdl = parseWorkDateStr(targetTask.deadline_end);
+            if (tdl) maxDeadlineEnd = tdl;
+        }
+
+        // Encompass all descendants if targetTask is a project, milestone, or parent task
+        const encompassDescendants = (parentId) => {
+            const children = (typeof g.getChildren === "function" ? g.getChildren(parentId) : []) || [];
+            for (const childId of children) {
+                const child = g.getTask(childId);
+                if (child) {
+                    const cs = parseWorkDateStr(child.work_start_date) || (child.start_date ? new Date(child.start_date) : null);
+                    const ce = parseWorkDateStr(child.work_end_date) || (child.end_date ? new Date(child.end_date) : null);
+                    if (cs && (!minWorkStart || cs < minWorkStart)) minWorkStart = cs;
+                    if (ce && (!maxWorkEnd || ce > maxWorkEnd)) maxWorkEnd = ce;
+                    if (child.has_deadline_delay && child.deadline_end) {
+                        const cdl = parseWorkDateStr(child.deadline_end);
+                        if (cdl && (!maxDeadlineEnd || cdl > maxDeadlineEnd)) maxDeadlineEnd = cdl;
+                    }
+                    encompassDescendants(childId);
+                }
+            }
+        };
+        encompassDescendants(targetTask.id);
+
+        if (!minWorkStart || !maxWorkEnd || isNaN(minWorkStart.getTime()) || isNaN(maxWorkEnd.getTime())) {
+            return;
+        }
+
+        // Find the highest zoom level from ZOOM_STEPS where the item's visual bar fits within the visible viewport width
+        const visibleWidth = this.getTimelineVisibleWidth();
+        const targetMaxPx = Math.max(150, Math.min(visibleWidth - 100, Math.floor(visibleWidth * 0.88)));
+        const candidateZooms = [...ZOOM_STEPS].reverse();
+        let bestZoom = ZOOM_STEPS[0];
+
+        for (const z of candidateZooms) {
+            const { gridStart, gridEnd } = workDatesToVisualGrid(minWorkStart, maxWorkEnd, z);
+            const effEnd = (maxDeadlineEnd && maxDeadlineEnd > gridEnd) ? maxDeadlineEnd : gridEnd;
+            const spanDays = Math.max(0.01, (effEnd.getTime() - gridStart.getTime()) / 86400000.0);
+            const pxPerDay = getZoomPxPerDay(z, visibleWidth);
+            const estimatedPx = spanDays * pxPerDay;
+            if (estimatedPx <= targetMaxPx) {
+                bestZoom = z;
+                break;
+            }
+        }
+
+        const fittedGrid = workDatesToVisualGrid(minWorkStart, maxWorkEnd, bestZoom);
+        const minStart = fittedGrid.gridStart;
+        const maxEnd = (maxDeadlineEnd && maxDeadlineEnd > fittedGrid.gridEnd) ? maxDeadlineEnd : fittedGrid.gridEnd;
+
+        let targetY = null;
+        if (g.selectTask) g.selectTask(targetTask.id);
+        const taskPos = (typeof g.getTaskPosition === "function") ? g.getTaskPosition(targetTask) : null;
+        if (taskPos && taskPos.top !== undefined) {
+            targetY = Math.max(0, taskPos.top - 80);
+        }
+
+        this._zoomAnchorDate = null;
+        this._zoomAnchorOffset = null;
+        if (this._zoomResetTimer) {
+            clearTimeout(this._zoomResetTimer);
+            this._zoomResetTimer = null;
+        }
+        this.setZoom(bestZoom, null, targetY, { minStart, maxEnd, targetId: targetTask.id });
+    }
+
+    /**
+     * Export to Excel (.xlsx) with high-fidelity GanntLT formatting
+     */
+    async exportToExcel() {
+        const sel = String(this.state.selectedProjectId || "active");
+        const isOnlyActive = sel === "active";
+        const isOverdue = sel === "overdue";
+        const isOnlyMo = sel === "only_mo";
+        const isOnlyPo = sel === "only_po";
+        const isOnlyDelivery = sel === "only_delivery";
+        const isSpecialFilter = isOnlyActive || isOverdue || isOnlyMo || isOnlyPo || isOnlyDelivery;
+        const projectId = isSpecialFilter ? 0 : (parseInt(sel, 10) || 0);
+        if (!isSpecialFilter && !projectId && this.state.projects && this.state.projects.length > 1) {
+            this.notification.add(
+                _t("Pasirinkite konkretų projektą arba filtrą („Visi aktyvūs projektai“ / „Vėluojantys projektai“ / „Gamyba“ / „Pirkimai“ / „Pristatymai“), kad eksportuotumėte tvarkaraštį."),
+                { type: "warning" }
+            );
+            return;
+        }
+
+        try {
+            this.notification.add(_t("Generuojamas Excel failas..."), { type: "info" });
+            const domain = this.props.domain || [];
+            await download({
+                url: "/gannt_lt/export_excel",
+                data: {
+                    project_id: isSpecialFilter ? "" : projectId,
+                    only_active: isOnlyActive,
+                    only_overdue: isOverdue,
+                    only_mo: isOnlyMo,
+                    only_po: isOnlyPo,
+                    only_delivery: isOnlyDelivery,
+                    data: JSON.stringify({
+                        project_id: isSpecialFilter ? null : projectId,
+                        only_active: isOnlyActive,
+                        only_overdue: isOverdue,
+                        only_mo: isOnlyMo,
+                        only_po: isOnlyPo,
+                        only_delivery: isOnlyDelivery,
+                        domain: domain,
+                    }),
+                },
+            });
+            this.notification.add(_t("Excel failas atsisiųstas"), { type: "success" });
+        } catch (err) {
+            const errMsg = err?.data?.message || err?.message || String(err);
+            this.notification.add(_t("Klaida eksportuojant Excel: ") + errMsg, { type: "danger" });
+        }
+    }
+}
+
+// Backward-compatibility alias
+export const AllInOneTimelineAction = GanntLTAction;
+
+// Register Client Action (replacing lazy loader once web.assets_backend_lazy loads)
+registry.category("actions").add("gannt_lt.action", GanntLTAction, { force: true });
+registry.category("actions").add("all_in_one_timeline.action", GanntLTAction, { force: true });
+
+// Register Timeline View with GanntLT
+export const GanntLTTimelineView = {
+    type: "timeline",
+    display_name: _t("GanntLT"),
+    icon: "fa fa-tasks",
+    multiRecord: true,
+    Controller: GanntLTAction,
+    props: (genericProps) => {
+        return {
+            ...genericProps,
+        };
+    },
+};
+
+export const AllInOneTimelineView = GanntLTTimelineView;
+
+// Register GanntLT under both custom js_class (to bypass OCA web_timeline preload) and 'timeline'
+registry.category("views").add("gannt_lt_timeline", GanntLTTimelineView, { force: true });
+registry.category("views").add("timeline", GanntLTTimelineView, { force: true });

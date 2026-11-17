@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="hr_shift_view_list" model="ir.ui.view">
+        <field name="name">hr.shift.list</field>
+        <field name="model">hr.shift</field>
+        <field name="arch" type="xml">
+            <list string="Shifts" editable="bottom">
+                <field name="employee_id"/>
+                <field name="date"/>
+                <field name="template_id" options="{'no_create': True}"/>
+                <field name="start_datetime"/>
+                <field name="end_datetime"/>
+                <field name="break_minutes" optional="show"/>
+                <field name="duration" widget="float_time" sum="Total"/>
+                <field name="is_custom" optional="show"/>
+                <field name="company_id" groups="base.group_multi_company" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="hr_shift_view_form" model="ir.ui.view">
+        <field name="name">hr.shift.form</field>
+        <field name="model">hr.shift</field>
+        <field name="arch" type="xml">
+            <form string="Shift">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="employee_id"/>
+                            <field name="date"/>
+                            <field name="template_id" options="{'no_create': True}"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group>
+                            <field name="start_datetime"/>
+                            <field name="end_datetime"/>
+                            <field name="break_minutes"/>
+                            <field name="duration" widget="float_time"/>
+                            <field name="is_custom"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="hr_shift_view_search" model="ir.ui.view">
+        <field name="name">hr.shift.search</field>
+        <field name="model">hr.shift</field>
+        <field name="arch" type="xml">
+            <search string="Shifts">
+                <field name="employee_id"/>
+                <field name="template_id"/>
+                <field name="date"/>
+                <filter name="custom" string="Custom Time" domain="[('is_custom', '=', True)]"/>
+                <filter name="no_template" string="Without Template" domain="[('template_id', '=', False)]"/>
+                <separator/>
+                <filter name="filter_date" string="Date" date="date"/>
+                <group>
+                    <filter name="group_employee" string="Employee" context="{'group_by': 'employee_id'}"/>
+                    <filter name="group_date" string="Date" context="{'group_by': 'date:day'}"/>
+                    <filter name="group_template" string="Template" context="{'group_by': 'template_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="hr_shift_action" model="ir.actions.act_window">
+        <field name="name">Shifts</field>
+        <field name="res_model">hr.shift</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="hr_shift_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Plan a shift
+            </p>
+            <p>
+                Pick an employee, a day and a shift template. The start and end are filled in from the template.
+            </p>
+        </field>
+    </record>
+
+</odoo>

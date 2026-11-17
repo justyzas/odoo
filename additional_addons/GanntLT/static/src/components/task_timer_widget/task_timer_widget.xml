@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<templates xml:space="preserve">
+    <t t-name="gannt_lt.TaskTimerWidget">
+        <span t-if="hasTime"
+              class="o_task_timer_badge badge rounded-pill d-inline-flex align-items-center ms-2"
+              t-att-class="isRunning ? 'text-bg-success' : (isDone ? 'text-bg-success' : (isCanceled ? 'text-bg-danger' : 'text-bg-warning'))"
+              title="Užduoties vykdymo laikas / Task Execution Timer">
+            <i t-if="isRunning" class="fa fa-circle o_task_timer_dot me-1"/>
+            <i t-elif="isDone" class="fa fa-check me-1"/>
+            <i t-elif="isCanceled" class="fa fa-times me-1"/>
+            <i t-else="" class="fa fa-pause me-1"/>
+            <span class="font-monospace fw-bold" t-esc="formattedTime"/>
+        </span>
+    </t>
+</templates>

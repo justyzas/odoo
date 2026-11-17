@@ -1,0 +1,642 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* hr_shift_planning
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 19.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-07 15:40+0000\n"
+"PO-Revision-Date: 2026-10-07 15:40+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: \n"
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "%(hours)s h in the 7 days up to this day (maximum %(max)s h)"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "%(hours)s h shift (maximum %(max)s h)"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__active
+msgid "Active"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "All departments"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.constraint,message:hr_shift_planning.constraint_hr_shift_employee_date_uniq
+msgid "An employee can only have one shift per day."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "Apply"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_search
+msgid "Archived"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "Break (min)"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__break_minutes
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__break_minutes
+msgid "Break (minutes)"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Break: %s min"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "Cancel"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift_template__color
+msgid "Cell background color in the planning grid."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "Clear"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__code
+msgid "Code"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__color
+msgid "Color"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__company_id
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__company_id
+msgid "Company"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model,name:hr_shift_planning.model_res_config_settings
+msgid "Config Settings"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Copy"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Copy previous month"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Copy previous week"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Copy shifts"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid ""
+"Copy the shifts of %(source)s to %(target)s for %(count)s employees? Shifts "
+"already planned this month are replaced. Nothing is saved until you click "
+"Save."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid ""
+"Copy the shifts of the week before to %(from)s - %(to)s for %(count)s "
+"employees? Shifts already planned on these days are replaced. Nothing is "
+"saved until you click Save."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.actions.act_window,help:hr_shift_planning.hr_shift_template_action
+msgid "Create a shift template"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__create_uid
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__create_uid
+msgid "Created by"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__create_date
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__create_date
+msgid "Created on"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__is_custom
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Custom Time"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "Custom time"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Custom time without template"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__date
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Date"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift__date
+msgid "Day the shift starts on. A night shift belongs to the day it starts."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Discard"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+msgid "Display"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__display_name
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__display_name
+#: model:ir.model.fields,field_description:hr_shift_planning.field_res_config_settings__display_name
+msgid "Display Name"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__duration
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__duration
+msgid "Duration (hours)"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__employee_id
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Employee"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model,name:hr_shift_planning.model_hr_shift
+msgid "Employee Shift"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__end_datetime
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__hour_to
+msgid "End"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__is_overnight
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_search
+msgid "Ends Next Day"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "HH:MM"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__id
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__id
+#: model:ir.model.fields,field_description:hr_shift_planning.field_res_config_settings__id
+msgid "ID"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift_template__hour_to
+msgid ""
+"If the end is earlier than or equal to the start, the shift ends on the next"
+" day."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.res_config_settings_view_form
+msgid "Labour Code Warnings"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Labour code warnings"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__write_uid
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__write_uid
+msgid "Last Updated by"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__write_date
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__write_date
+msgid "Last Updated on"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_res_config_settings__shift_max_week_hours
+msgid "Maximum Hours per 7 Days"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_res_config_settings__shift_max_shift_hours
+msgid "Maximum Shift Length"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_res_config_settings__shift_min_rest_hours
+msgid "Minimum Rest Between Shifts"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__name
+msgid "Name"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Next month"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "No employees"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "No shift templates yet: create them in Working Hours → Templates."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+msgid "None"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Only %(rest)s h of rest between shifts (minimum %(min)s h)"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Other"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.actions.act_window,help:hr_shift_planning.hr_shift_action
+msgid ""
+"Pick an employee, a day and a shift template. The start and end are filled "
+"in from the template."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.actions.act_window,help:hr_shift_planning.hr_shift_action
+msgid "Plan a shift"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Planned hours this month"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:res.groups,name:hr_shift_planning.group_shift_planner
+msgid "Planner"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.actions.client,name:hr_shift_planning.hr_shift_planning_grid_action
+#: model:ir.ui.menu,name:hr_shift_planning.menu_hr_shift_planning_grid
+msgid "Planning"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Previous month"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Previous month → this month"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Previous week → week of the selected day"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Save"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Search employee..."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Select a day of the week to fill first."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__sequence
+msgid "Sequence"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_form
+msgid "Shift"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.res_config_settings_view_form
+msgid "Shift Planning"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model,name:hr_shift_planning.model_hr_shift_template
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+msgid "Shift Template"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.actions.act_window,name:hr_shift_planning.hr_shift_template_action
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_list
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_search
+msgid "Shift Templates"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/res_config_settings.py:0
+msgid "Shift planning limits cannot be negative."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift_template.py:0
+msgid "Shift start and end must be between 00:00 and 23:59."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.actions.act_window,name:hr_shift_planning.hr_shift_action
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_list
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Shifts"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.ui.menu,name:hr_shift_planning.menu_hr_shift_list
+msgid "Shifts (list)"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift_template__code
+msgid "Short code (1-3 characters) shown in the planning grid cells."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__start_datetime
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift_template__hour_from
+msgid "Start"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Stay"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.xml:0
+#: model:ir.model.fields,field_description:hr_shift_planning.field_hr_shift__template_id
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Template"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.ui.menu,name:hr_shift_planning.menu_hr_shift_template
+msgid "Templates"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.actions.act_window,help:hr_shift_planning.hr_shift_template_action
+msgid ""
+"Templates (e.g. Morning 06:00-14:00) are assigned to employees in the "
+"planning grid."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift.py:0
+#: code:addons/hr_shift_planning/models/hr_shift_template.py:0
+msgid "The break cannot be negative."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift.py:0
+#: code:addons/hr_shift_planning/models/hr_shift_template.py:0
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.js:0
+msgid "The break must be shorter than the shift."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.res_config_settings_view_form
+msgid ""
+"The planning grid warns (without blocking) when a plan goes beyond these "
+"limits."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift.py:0
+msgid "The shift end must be after its start."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift.py:0
+msgid "The shift of %(employee)s must start on %(date)s."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-python
+#: code:addons/hr_shift_planning/models/hr_shift_template.py:0
+msgid "The shift template code cannot be empty."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.constraint,message:hr_shift_planning.constraint_hr_shift_template_code_company_uniq
+msgid "The shift template code must be unique per company."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift__is_custom
+msgid "The shift time differs from its template."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:res.groups,comment:hr_shift_planning.group_shift_planner
+msgid "The user can plan shifts and manage shift templates."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:res.groups,comment:hr_shift_planning.group_shift_viewer
+msgid "The user can see the shift planning, but cannot change it."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Today"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_list
+msgid "Total"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "Unsaved changes"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/template_picker.js:0
+msgid "Use the 24-hour format HH:MM, e.g. 06:00 or 22:30."
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:res.groups,name:hr_shift_planning.group_shift_viewer
+msgid "Viewer"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_view_search
+msgid "Without Template"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.ui.menu,name:hr_shift_planning.menu_hr_shift_planning_root
+#: model:res.groups.privilege,name:hr_shift_planning.res_groups_privilege_shift_planning
+msgid "Working Hours"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+msgid "Working Time"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift__duration
+#: model:ir.model.fields,help:hr_shift_planning.field_hr_shift_template__duration
+msgid "Working hours of the shift, excluding the break."
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.js:0
+msgid "You have unsaved changes in the planning. Discard them?"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+msgid "e.g. M"
+msgstr ""
+
+#. module: hr_shift_planning
+#: model_terms:ir.ui.view,arch_db:hr_shift_planning.hr_shift_template_view_form
+msgid "e.g. Morning"
+msgstr ""
+
+#. module: hr_shift_planning
+#. odoo-javascript
+#: code:addons/hr_shift_planning/static/src/planning_grid/planning_grid.xml:0
+msgid "Σ h"
+msgstr ""

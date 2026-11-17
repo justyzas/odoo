@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Standalone Timeline View for Projects (priority=1 + js_class ensures GanntLT overrides OCA web_timeline) -->
+    <record id="project_project_timeline" model="ir.ui.view">
+        <field name="name">project.project.timeline</field>
+        <field name="model">project.project</field>
+        <field name="type">timeline</field>
+        <field name="priority">1</field>
+        <field name="group_ids" eval="[(4, ref('GanntLT.group_gannt_lt_user'))]"/>
+        <field name="arch" type="xml">
+            <timeline
+                js_class="gannt_lt_timeline"
+                date_start="date_start"
+                date_stop="date"
+                default_group_by="partner_id"
+                event_open_popup="true"
+            />
+        </field>
+    </record>
+
+    <!-- Enable Timeline View mode on Project Actions without overwriting third-party view modes -->
+    <function model="project.project" name="_enable_timeline_view_modes"/>
+
+    <!-- Project Form: Deadline field only (NO GanntLT smart button in button_box per UI.md / AGENTS.md) -->
+    <record id="edit_project_inherit_gannt_lt" model="ir.ui.view">
+        <field name="name">project.project.form.inherit.gannt_lt</field>
+        <field name="model">project.project</field>
+        <field name="inherit_id" ref="project.edit_project"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='date_start']" position="attributes">
+                <attribute name="readonly">not can_edit_gannt_dates</attribute>
+            </xpath>
+            <xpath expr="//field[@name='date']" position="attributes">
+                <attribute name="readonly">not can_edit_gannt_dates</attribute>
+            </xpath>
+            <xpath expr="//field[@name='date_start']" position="after">
+                <field name="can_edit_gannt_dates" invisible="1"/>
+                <field name="date_deadline" string="Terminas (Deadline)" readonly="not can_edit_gannt_dates"/>
+                <field name="actual_finish_date" readonly="1" invisible="not actual_finish_date" string="Faktinė pabaiga"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
