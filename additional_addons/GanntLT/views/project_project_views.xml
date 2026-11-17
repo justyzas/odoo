@@ -6,6 +6,7 @@
         <field name="model">project.project</field>
         <field name="type">timeline</field>
         <field name="priority">1</field>
+        <field name="group_ids" eval="[(4, ref('GanntLT.group_gannt_lt_user'))]"/>
         <field name="arch" type="xml">
             <timeline
                 js_class="gannt_lt_timeline"
@@ -26,8 +27,16 @@
         <field name="model">project.project</field>
         <field name="inherit_id" ref="project.edit_project"/>
         <field name="arch" type="xml">
+            <xpath expr="//field[@name='date_start']" position="attributes">
+                <attribute name="readonly">not can_edit_gannt_dates</attribute>
+            </xpath>
+            <xpath expr="//field[@name='date']" position="attributes">
+                <attribute name="readonly">not can_edit_gannt_dates</attribute>
+            </xpath>
             <xpath expr="//field[@name='date_start']" position="after">
-                <field name="date_deadline" string="Terminas (Deadline)"/>
+                <field name="can_edit_gannt_dates" invisible="1"/>
+                <field name="date_deadline" string="Terminas (Deadline)" readonly="not can_edit_gannt_dates"/>
+                <field name="actual_finish_date" readonly="1" invisible="not actual_finish_date" string="Faktinė pabaiga"/>
             </xpath>
         </field>
     </record>

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 {
-    "name": "GanntLT 3.0",
-    "summary": "GanntLT 3.0 - Interaktyvus projektų ir užduočių Gantt tvarkaraštis (Timeline)",
+    "name": "GanntLT 3.3",
+    "summary": "GanntLT 3.3 - Interaktyvus projektų ir užduočių Gantt tvarkaraštis (Timeline)",
     "description": """
-GanntLT 3.0 - Pažangus Gantt tvarkaraštis projektams ir užduotims
+GanntLT 3.3 - Pažangus Gantt tvarkaraštis projektams ir užduotims
 ================================================================
 
 Idėjos autorius ir savininkas:
@@ -16,8 +16,10 @@ Benas Jasiulis
 * Automatiškai sukuria planuojamų datų laukus (planned_date_start, planned_date_end) su integruotu daterange pasirinkimu.
 * Integruoja modernų DHTMLX Gantt (Timeline) vaizdą tiesiogiai į Odoo projektų ir užduočių peržiūros perjungiklį (View Switcher - 3 horizontalių juostelių „Timeline“ piktograma).
 
-Pagrindinės funkcijos (v3.0):
+Pagrindinės funkcijos (v3.3):
 ----------------------------
+* Griežtas 4 lygių prieigos valdymas per „GanntLT“ teisių meniu (No / Can View / Can Track Time / Can Edit) — be jokių „Project Administrator“ apėjimų; esant „No“, Timeline perjungiklis paslepiamas.
+* Pilnas suderinamumas su serveriais, kuriuose įdiegti OCA web_timeline / project_timeline (priority=1 + js_class=gannt_lt_timeline).
 * Vienintelis prieigos taškas per Odoo viršutinį dešinįjį rodinio perjungiklį („Timeline“ mygtukas šalia Kanban, List, Calendar, Activity) — be jokių papildomų Odoo meniu punktų ar projekto formos mygtukų.
 * 3 lygių prieigos teisių modelis:
   - GanntLT: Can View (100% tik peržiūrai skirta Gantt laiko juosta, darbo laikmatis paslėptas).
@@ -43,7 +45,7 @@ Pagrindinės funkcijos (v3.0):
 * Pilna formos navigacija dvigubu paspaudimu ir Odoo ConfirmationDialog trynimo patvirtinimui.
 * Greitas tiesioginis projekto tvarkaraščio eksportas į profesionalų Excel (.xlsx) su hierarchiniu medžiu ir Gantt juostomis.
 """,
-    "version": "3.0.0",
+    "version": "3.3.0",
     "category": "Project Management",
     "author": "Benas Jasiulis",
     "maintainer": "Benas Jasiulis",

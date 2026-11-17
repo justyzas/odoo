@@ -24,6 +24,7 @@ _APPROVAL_LOCK_FIELDS = (
 _SCHEDULE_EDIT_FIELDS = (
     "planned_date_start",
     "planned_date_end",
+    "date_deadline",
     "depend_on_ids",
     "allocated_hours",
 )
@@ -342,6 +343,16 @@ class ProjectTask(models.Model):
     approved_planned_date_start = fields.Datetime("Patvirtinta pradžia / Approved Start", readonly=True, copy=False)
     approved_planned_date_end = fields.Datetime("Patvirtinta pabaiga / Approved End", readonly=True, copy=False)
     approved_baseline_duration = fields.Float("Patvirtinta bazinė trukmė (val.)", readonly=True, copy=False)
+    can_edit_gannt_dates = fields.Boolean(
+        compute="_compute_can_edit_gannt_dates",
+        string="Can Edit GanntLT Dates",
+    )
+
+    @api.depends_context("uid")
+    def _compute_can_edit_gannt_dates(self):
+        can_edit = self._has_edit_rights()
+        for rec in self:
+            rec.can_edit_gannt_dates = can_edit
 
     # --- Exclusive Multi-User Concurrency Lock & Paused State ---
     active_user_id = fields.Many2one(
@@ -390,13 +401,31 @@ class ProjectTask(models.Model):
         """Returns True only for internal server calls carrying _TRUSTED_CONTEXT_TOKEN or su=True."""
         return bool(self.env.su or self.env.context.get("_gannt_lt_trusted_token") is _TRUSTED_CONTEXT_TOKEN)
 
-    def _has_edit_rights(self):
-        """True if user holds GanntLT Edit / Odoo Project Manager / Admin rights."""
+    def _has_view_rights(self):
+        """True only if user holds GanntLT: Can View (or higher) or internal superuser."""
         return bool(
             self.env.is_superuser()
-            or self.env.user.has_group("base.group_system")
+            or self.env.user.has_group("GanntLT.group_gannt_lt_user")
+        )
+
+    def _has_edit_rights(self):
+        """True only if user holds GanntLT: Can Edit (or internal superuser)."""
+        return bool(
+            self.env.is_superuser()
             or self.env.user.has_group("GanntLT.group_gannt_lt_manager")
-            or self.env.user.has_group("project.group_project_manager")
+        )
+
+    def _has_timer_override_rights(self):
+        """True only if user holds GanntLT: Can Edit AND Project Manager/System rights (or superuser)."""
+        return bool(
+            self.env.is_superuser()
+            or (
+                self.env.user.has_group("GanntLT.group_gannt_lt_manager")
+                and (
+                    self.env.user.has_group("project.group_project_manager")
+                    or self.env.user.has_group("base.group_system")
+                )
+            )
         )
 
     def _has_timer_rights(self):
@@ -655,11 +684,7 @@ class ProjectTask(models.Model):
             return False
 
         if self.active_user_id and self.active_user_id != self.env.user:
-            can_manage = (
-                self.env.user.has_group("project.group_project_manager")
-                or self.env.is_superuser()
-                or self.env.user.has_group("base.group_system")
-            )
+            can_manage = self._has_timer_override_rights()
             if self.is_timer_running and not can_manage:
                 raise UserError(
                     _("Užduotį šiuo metu vykdo %s. Kitas vartotojas negali pradėti tos pačios užduoties.")
@@ -727,11 +752,7 @@ class ProjectTask(models.Model):
         self.ensure_one()
         self._check_gannt_lt_timer_access()
         if self.active_user_id and self.active_user_id != self.env.user:
-            can_manage = (
-                self.env.user.has_group("project.group_project_manager")
-                or self.env.is_superuser()
-                or self.env.user.has_group("base.group_system")
-            )
+            can_manage = self._has_timer_override_rights()
             if not can_manage:
                 raise UserError(
                     _("Pristabdyti užduotį gali tik ją vykdantis vartotojas (%s) arba projekto vadovas.")
@@ -753,11 +774,7 @@ class ProjectTask(models.Model):
         self.ensure_one()
         self._check_gannt_lt_timer_access()
         if self.active_user_id and self.active_user_id != self.env.user:
-            can_manage = (
-                self.env.user.has_group("project.group_project_manager")
-                or self.env.is_superuser()
-                or self.env.user.has_group("base.group_system")
-            )
+            can_manage = self._has_timer_override_rights()
             if not can_manage:
                 raise UserError(
                     _("Užbaigti užduotį gali tik ją vykdantis vartotojas (%s) arba projekto vadovas.")
@@ -899,7 +916,7 @@ class ProjectTask(models.Model):
         )
 
         if not has_established_plan:
-            start = self.first_timer_start or self.create_date or now
+            start = self.first_timer_start or self.planned_date_start or self.create_date or now
             if start > now:
                 start = now
             start_f = floor_minute(start)
@@ -963,11 +980,7 @@ class ProjectTask(models.Model):
         self.ensure_one()
         self._check_gannt_lt_timer_access()
         if self.active_user_id and self.active_user_id != self.env.user:
-            can_manage = (
-                self.env.user.has_group("project.group_project_manager")
-                or self.env.is_superuser()
-                or self.env.user.has_group("base.group_system")
-            )
+            can_manage = self._has_timer_override_rights()
             if (self.is_timer_running or self.is_paused) and not can_manage:
                 raise UserError(
                     _("Atnaujinti užduotį gali tik ją vykdantis vartotojas (%s) arba projekto vadovas.")
@@ -1543,7 +1556,7 @@ class ProjectTask(models.Model):
                     and rec.active_user_id
                     and rec.active_user_id != self.env.user
                     and ("planned_date_start" in vals or "planned_date_end" in vals or "state" in vals)
-                    and not (self.env.user.has_group("project.group_project_manager") or self.env.is_superuser() or self.env.user.has_group("base.group_system"))
+                    and not self._has_timer_override_rights()
                 ):
                     raise UserError(
                         _("Užduotį šiuo metu vykdo %s. Ji yra užrakinta kitiems vartotojams.")
@@ -1617,6 +1630,20 @@ class ProjectTask(models.Model):
                                 _("Užduotis „%s“ jau buvo patvirtinta. Suplanuotų valandų negalima sumažinti (bazinis planas: %s val.).")
                                 % (rec.name, round(base_dur, 2))
                             )
+
+                    # Rule 4: Cannot clear or shorten date_deadline manually once approved/completed
+                    if "date_deadline" in vals and not is_trusted:
+                        new_dl = vals.get("date_deadline")
+                        if not new_dl and rec.date_deadline:
+                            raise ValidationError(
+                                _("Užduotis „%s“ jau buvo patvirtinta. Termino (Deadline) išvalyti negalima.") % rec.name
+                            )
+                        if new_dl and rec.date_deadline:
+                            new_dl_dt = fields.Datetime.to_datetime(new_dl) if isinstance(new_dl, str) else new_dl
+                            if isinstance(new_dl_dt, datetime) and new_dl_dt < rec.date_deadline:
+                                raise ValidationError(
+                                    _("Užduotis „%s“ jau buvo patvirtinta. Termino (Deadline) sutrumpinti negalima.") % rec.name
+                                )
 
                 # Parent task hierarchy state rule:
                 # A parent task CANNOT be marked '1_done' (Done) until ALL tasks below it are '1_done' (Done).
@@ -1882,7 +1909,7 @@ class ProjectTask(models.Model):
         return res
 
     @api.model
-    def get_all_in_one_timeline_data(self, project_id=None, domain=None, date_start=None, date_end=None, user_id=None, model_name=None, only_overdue=False, only_mo=False):
+    def get_all_in_one_timeline_data(self, project_id=None, domain=None, date_start=None, date_end=None, user_id=None, model_name=None, only_active=False, only_overdue=False, only_mo=False, only_po=False, only_delivery=False):
         """
         Fetches structured timeline data for DHTMLX Gantt chart:
         - Projects and Tasks hierarchy (Project -> Task -> Subtask)
@@ -1891,80 +1918,187 @@ class ProjectTask(models.Model):
         - Available projects for filter dropdown
         Safely applies search domain whether the active view is on project.project or project.task.
         """
+        if not self._has_view_rights():
+            raise AccessError(_("Jūs neturite prieigos prie GanntLT laiko juostos."))
         user_tz = get_user_tz(self.env)
         holidays_cache = {}
         dt_format = "%Y-%m-%d %H:%M:%S"
         can_edit = self._has_edit_rights()
         can_track_time = self._has_timer_rights()
         has_mrp = bool("mrp.production" in self.env and self.env["mrp.production"].has_access("read"))
+        has_purchase = bool("purchase.order" in self.env and self.env["purchase.order"].has_access("read"))
+        has_delivery = bool("stock.picking" in self.env and self.env["stock.picking"].has_access("read"))
 
+        is_only_active = bool(only_active or project_id == "active")
         is_only_overdue = bool(only_overdue or project_id == "overdue")
         is_only_mo = bool(only_mo or project_id == "only_mo")
+        is_only_po = bool(only_po or project_id == "only_po")
+        is_only_delivery = bool(only_delivery or project_id == "only_delivery")
 
-        if is_only_mo:
+        now_utc = fields.Datetime.now()
+        now_loc_supply = utc_to_local_dt(self.env, now_utc, user_tz=user_tz)
+
+        def _build_supply_gantt_item(kind, rec, parent_key, fallback_start, rec_proj, rec_user):
+            if kind == "po":
+                s_dt = rec.date_order or rec.date_approve or rec.create_date or fallback_start
+                s_loc = utc_to_local_dt(self.env, s_dt, user_tz=user_tz)
+                e_loc = utc_to_local_dt(self.env, rec.date_planned, user_tz=user_tz) if rec.date_planned else (s_loc + timedelta(days=7))
+                if e_loc <= s_loc:
+                    e_loc = s_loc + timedelta(days=1)
+                has_explicit_end = bool(rec.date_planned)
+                done_picks = rec.picking_ids.filtered(lambda pk: pk.state == "done" and pk.date_done) if "picking_ids" in rec._fields else False
+                rec_status = getattr(rec, "receipt_status", False)
+                is_done = (rec_status == "full") or (rec.state == "done" and not getattr(rec, "picking_ids", False))
+                prog = 1.0 if is_done else (0.5 if rec.state == "purchase" else 0.0)
+                color = "#16a34a" if is_done else "#0284c7"
+                act_loc = max((utc_to_local_dt(self.env, pk.date_done, user_tz=user_tz) for pk in done_picks), default=None) if (is_done and done_picks) else None
+                item_id = f"po_{rec.id}"
+                label = f"{rec.name} - {rec.partner_id.name}" if rec.partner_id else rec.name
+            elif kind == "mo":
+                s_dt = rec.date_start or rec.create_date or fallback_start
+                s_loc = utc_to_local_dt(self.env, s_dt, user_tz=user_tz)
+                is_done = (rec.state == "done")
+                if rec.date_deadline:
+                    e_loc = utc_to_local_dt(self.env, rec.date_deadline, user_tz=user_tz)
+                elif is_done and rec.date_finished:
+                    e_loc = utc_to_local_dt(self.env, rec.date_finished, user_tz=user_tz)
+                else:
+                    e_loc = s_loc + timedelta(days=3)
+                if e_loc <= s_loc:
+                    e_loc = s_loc + timedelta(days=1)
+                has_explicit_end = bool(rec.date_deadline or (is_done and rec.date_finished))
+                prog = 1.0 if is_done else (0.5 if rec.state == "progress" else 0.0)
+                color = "#16a34a" if is_done else "#ea580c"
+                act_loc = utc_to_local_dt(self.env, rec.date_finished, user_tz=user_tz) if (is_done and rec.date_finished) else None
+                item_id = f"mo_{rec.id}"
+                label = f"{rec.name}: {rec.product_id.display_name or rec.product_id.name or ''}"
+            else:
+                s_dt = rec.scheduled_date or rec.date_done or rec.date_deadline or rec.create_date or fallback_start
+                s_loc = utc_to_local_dt(self.env, s_dt, user_tz=user_tz)
+                is_done = (rec.state == "done")
+                if rec.date_deadline and utc_to_local_dt(self.env, rec.date_deadline, user_tz=user_tz) > s_loc:
+                    e_loc = utc_to_local_dt(self.env, rec.date_deadline, user_tz=user_tz)
+                else:
+                    e_loc = s_loc + timedelta(days=1)
+                has_explicit_end = bool(rec.date_deadline or rec.scheduled_date)
+                prog = 1.0 if is_done else (0.5 if rec.state == "assigned" else 0.0)
+                color = "#16a34a" if is_done else "#0f766e"
+                act_loc = utc_to_local_dt(self.env, rec.date_done, user_tz=user_tz) if (is_done and rec.date_done) else None
+                item_id = f"delivery_{rec.id}"
+                label = f"{rec.name} - {rec.partner_id.name}" if rec.partner_id else rec.name
+
+            has_deadline_delay = False
+            deadline_str = False
+            deadline_end_str = False
+            delay_kind = ""
+            delay_days = 0
+            delay_hours = 0.0
+            delay_minutes = 0
+            has_early_finish = False
+            early_minutes = 0
+            early_hours = 0.0
+            early_days = 0
+            actual_finish_str = False
+
+            if is_done and act_loc:
+                if act_loc > e_loc:
+                    has_deadline_delay = True
+                    delay_kind = "late"
+                    deadline_str = act_loc.strftime(dt_format)
+                    deadline_end_str = deadline_str
+                    delay_minutes = ceil_minutes_between(e_loc, act_loc)
+                    delay_hours = round(delay_minutes / 60.0, 1)
+                    delay_days = (act_loc.date() - e_loc.date()).days if act_loc.date() > e_loc.date() else 0
+                elif act_loc < e_loc and (e_loc.date() - act_loc.date()).days > 0:
+                    has_early_finish = True
+                    early_minutes = ceil_minutes_between(act_loc, e_loc)
+                    early_hours = round(early_minutes / 60.0, 1)
+                    early_days = (e_loc.date() - act_loc.date()).days
+                    actual_finish_str = act_loc.strftime(dt_format)
+
+            is_overdue_past = bool(not is_done and has_explicit_end and e_loc < now_loc_supply)
+
+            gantt_s = datetime.combine(s_loc.date(), time.min)
+            gantt_e = datetime.combine(e_loc.date() + timedelta(days=1), time.min) if e_loc.time() > time.min else datetime.combine(e_loc.date(), time.min)
+            if gantt_e <= gantt_s:
+                gantt_e = gantt_s + timedelta(days=1)
+
+            return {
+                "id": item_id,
+                "odoo_id": rec.id,
+                "text": label,
+                "type": "task",
+                "open": False,
+                "parent": parent_key,
+                "start_date": gantt_s.strftime(dt_format),
+                "end_date": gantt_e.strftime(dt_format),
+                "work_start_date": s_loc.strftime(dt_format),
+                "work_end_date": e_loc.strftime(dt_format),
+                "date_deadline": deadline_str or e_loc.strftime(dt_format),
+                "deadline_end": deadline_end_str,
+                "has_deadline": bool(has_explicit_end),
+                "has_deadline_delay": has_deadline_delay,
+                "delay_kind": delay_kind,
+                "delay_days": delay_days,
+                "delay_hours": delay_hours,
+                "delay_minutes": delay_minutes,
+                "has_early_finish": has_early_finish,
+                "early_minutes": early_minutes,
+                "early_hours": early_hours,
+                "early_days": early_days,
+                "actual_finish_date": actual_finish_str,
+                "is_overdue_past": is_overdue_past,
+                "is_po": kind == "po",
+                "is_mo": kind == "mo",
+                "is_delivery": kind == "delivery",
+                "is_project": False,
+                "is_milestone": False,
+                "is_group": False,
+                "readonly": True,
+                "color": color,
+                "state": rec.state,
+                "is_done": is_done,
+                "progress": prog,
+                "progress_percent": int(prog * 100),
+                "assignees": rec_user.name if rec_user else "",
+                "assignee_avatars": [{
+                    "id": rec_user.id,
+                    "name": rec_user.name,
+                    "avatar": f"/web/image/res.users/{rec_user.id}/avatar_128",
+                }] if rec_user else [],
+                "project_id": rec_proj.id if rec_proj else False,
+                "project_name": rec_proj.name if rec_proj else "Be projekto",
+            }
+
+        if is_only_mo or is_only_po or is_only_delivery:
             gantt_tasks = []
-            now = fields.Datetime.now()
-            if has_mrp:
+            if is_only_mo and has_mrp:
                 mo_model = self.env["mrp.production"]
                 mo_has_proj = "project_id" in mo_model._fields
                 mo_has_user = "user_id" in mo_model._fields
-                all_mos = mo_model.search([("state", "!=", "cancel")], order="date_start, id", limit=2000)
-                for mo in all_mos:
-                    s_dt = mo.date_start or mo.create_date or now
-                    s_local = utc_to_local_dt(self.env, s_dt, user_tz=user_tz)
-                    if mo.date_finished:
-                        e_local = utc_to_local_dt(self.env, mo.date_finished, user_tz=user_tz)
-                    elif mo.date_deadline:
-                        e_local = utc_to_local_dt(self.env, mo.date_deadline, user_tz=user_tz)
-                    else:
-                        e_local = s_local + timedelta(days=3)
-                    if e_local <= s_local:
-                        e_local = s_local + timedelta(days=1)
-
-                    gantt_start = datetime.combine(s_local.date(), time.min)
-                    if e_local.time() > time.min:
-                        gantt_end = datetime.combine(e_local.date() + timedelta(days=1), time.min)
-                    else:
-                        gantt_end = datetime.combine(e_local.date(), time.min)
-                    if gantt_end <= gantt_start:
-                        gantt_end = gantt_start + timedelta(days=1)
-
-                    mo_is_done = (mo.state == "done")
-                    prog = 1.0 if mo_is_done else (0.5 if mo.state == "progress" else 0.0)
-                    mo_proj = mo.project_id if mo_has_proj else False
-                    mo_user = mo.user_id if mo_has_user else False
-                    gantt_tasks.append({
-                        "id": f"mo_{mo.id}",
-                        "odoo_id": mo.id,
-                        "text": f"{mo.name}: {mo.product_id.display_name or mo.product_id.name or ''}",
-                        "type": "task",
-                        "open": False,
-                        "parent": None,
-                        "start_date": gantt_start.strftime(dt_format),
-                        "end_date": gantt_end.strftime(dt_format),
-                        "work_start_date": s_local.strftime(dt_format),
-                        "work_end_date": e_local.strftime(dt_format),
-                        "is_mo": True,
-                        "is_po": False,
-                        "is_delivery": False,
-                        "is_project": False,
-                        "is_milestone": False,
-                        "is_group": False,
-                        "readonly": True,
-                        "state": mo.state,
-                        "is_done": mo_is_done,
-                        "progress": prog,
-                        "progress_percent": int(prog * 100),
-                        "color": "#16a34a" if mo_is_done else "#ea580c",
-                        "assignees": mo_user.name if mo_user else "",
-                        "assignee_avatars": [{
-                            "id": mo_user.id,
-                            "name": mo_user.name,
-                            "avatar": f"/web/image/res.users/{mo_user.id}/avatar_128",
-                        }] if mo_user else [],
-                        "project_id": mo_proj.id if mo_proj else False,
-                        "project_name": mo_proj.name if mo_proj else "Be projekto",
-                    })
+                for mo in mo_model.search([("state", "!=", "cancel")], order="date_start, id", limit=2000):
+                    proj_r = mo.project_id if mo_has_proj else False
+                    if proj_r and not proj_r.has_access("read"):
+                        continue
+                    gantt_tasks.append(_build_supply_gantt_item("mo", mo, None, now_utc, proj_r, mo.user_id if mo_has_user else False))
+            elif is_only_po and has_purchase:
+                po_model = self.env["purchase.order"]
+                po_has_proj = "project_id" in po_model._fields
+                po_has_user = "user_id" in po_model._fields
+                for po in po_model.search([("state", "!=", "cancel")], order="date_order, id", limit=2000):
+                    proj_r = po.project_id if po_has_proj else False
+                    if proj_r and not proj_r.has_access("read"):
+                        continue
+                    gantt_tasks.append(_build_supply_gantt_item("po", po, None, now_utc, proj_r, po.user_id if po_has_user else False))
+            elif is_only_delivery and has_delivery:
+                pick_model = self.env["stock.picking"]
+                pick_has_proj = "project_id" in pick_model._fields
+                pick_has_user = "user_id" in pick_model._fields
+                for pick in pick_model.search([("picking_type_code", "=", "outgoing"), ("state", "!=", "cancel")], order="scheduled_date, id", limit=2000):
+                    proj_r = pick.project_id if pick_has_proj else False
+                    if proj_r and not proj_r.has_access("read"):
+                        continue
+                    gantt_tasks.append(_build_supply_gantt_item("delivery", pick, None, now_utc, proj_r, pick.user_id if pick_has_user else False))
 
             all_projects = self.env["project.project"].search([], order="name", limit=500)
             project_list = [{"id": p.id, "name": p.name} for p in all_projects]
@@ -1975,13 +2109,15 @@ class ProjectTask(models.Model):
                 "can_edit": False,
                 "can_track_time": can_track_time,
                 "has_mrp": has_mrp,
+                "has_purchase": has_purchase,
+                "has_delivery": has_delivery,
             }
 
         project_model = self.env["project.project"]
         task_model = self.env["project.task"]
 
         explicit_proj_id = None
-        if project_id and project_id not in ("overdue", "only_mo"):
+        if project_id and project_id not in ("overdue", "only_mo", "only_po", "only_delivery"):
             try:
                 p_val = int(project_id)
                 if p_val > 0:
@@ -2125,6 +2261,8 @@ class ProjectTask(models.Model):
                 "can_edit": can_edit,
                 "can_track_time": can_track_time,
                 "has_mrp": has_mrp,
+                "has_purchase": has_purchase,
+                "has_delivery": has_delivery,
             }
 
         # Pre-index task children once (avoids O(T^2) tasks.filtered scans)
@@ -2455,11 +2593,7 @@ class ProjectTask(models.Model):
                 res["days"] = (eff_end.date() - c_end.date()).days if eff_end.date() > c_end.date() else 0
             return res
 
-        can_manage_any = bool(
-            self.env.is_superuser()
-            or self.env.user.has_group("base.group_system")
-            or self.env.user.has_group("project.group_project_manager")
-        )
+        can_manage_any = self._has_timer_override_rights()
 
         def build_task_dict(t, parent_key):
             metrics = get_task_metrics(t)
@@ -2468,7 +2602,20 @@ class ProjectTask(models.Model):
 
             t_start, t_end = get_task_dates(t)
             subtasks = children_by_parent_id.get(t.id, [])
-            has_dates = bool((t.planned_date_start and t.planned_date_end) or t.date_deadline or t.parent_id or subtasks)
+            t_state = t.state or "01_in_progress"
+            is_t_continuous = bool(
+                not t_is_done
+                and t_state not in ("1_done", "03_approved", "1_canceled")
+                and not t.planned_date_end
+                and not t.date_deadline
+                and not subtasks
+                and (not t.parent_id or not t.parent_id.planned_date_end)
+            )
+            if is_t_continuous:
+                today_eod = now_local.replace(hour=17, minute=0, second=0, microsecond=0)
+                if today_eod > t_end:
+                    t_end = today_eod
+            has_dates = bool((t.planned_date_start and t.planned_date_end) or t.date_deadline or t.parent_id or subtasks or is_t_continuous)
 
             # Auto-fill display hours from darbo valandos (working hours) if unset or 0.0
             if not has_dates:
@@ -2651,7 +2798,8 @@ class ProjectTask(models.Model):
                 "is_locked": is_locked,
                 "blocking_tasks": ", ".join(blocking_tasks),
                 "is_overdue_past": bool(
-                    not t_is_done
+                    not is_t_continuous
+                    and not t_is_done
                     and t_state not in ("1_done", "03_approved", "1_canceled")
                     and prog < 1.0
                     and (
@@ -2659,6 +2807,7 @@ class ProjectTask(models.Model):
                         or (t.date_deadline and utc_to_local_dt(self.env, t.date_deadline, user_tz=user_tz) < now_local)
                     )
                 ),
+                "is_continuous": is_t_continuous,
                 "is_project": False,
                 "is_milestone": False,
                 "is_done": False if is_locked else bool(t_is_done),
@@ -2816,8 +2965,28 @@ class ProjectTask(models.Model):
             if p_start.hour == 0 and p_start.minute == 0:
                 p_start = p_start.replace(hour=8, minute=0, second=0)
 
+            is_p_continuous = bool(
+                (p.last_update_status or "") != "done"
+                and not p.date
+                and not getattr(p, "date_deadline", False)
+                and not p_milestones
+                and not p_pos
+                and not p_mos
+                and not p_deliveries
+                and (
+                    not p_tasks
+                    or any(
+                        not t.planned_date_end
+                        and not t.date_deadline
+                        and (t.state or "01_in_progress") not in ("1_done", "03_approved", "1_canceled")
+                        for t in p_tasks
+                    )
+                )
+            )
             if p.date:
                 p_end = datetime.combine(p.date, datetime.max.time().replace(microsecond=0)) if not isinstance(p.date, datetime) else utc_to_local_dt(self.env, p.date, user_tz=user_tz)
+            elif getattr(p, "actual_finish_date", False):
+                p_end = datetime.combine(p.actual_finish_date, time(17, 0, 0))
             elif task_date_pairs:
                 p_end = max(pair[1] for pair in task_date_pairs)
             else:
@@ -2825,6 +2994,11 @@ class ProjectTask(models.Model):
 
             if (p_end.hour == 0 and p_end.minute == 0) or (p_end.hour == 12 and p_end.minute == 0) or (p_end.hour == 23 and p_end.minute == 59):
                 p_end = p_end.replace(hour=17, minute=0, second=0)
+
+            if is_p_continuous:
+                today_eod = now_local.replace(hour=17, minute=0, second=0, microsecond=0)
+                if today_eod > p_end:
+                    p_end = today_eod
 
             def _get_po_dates(po_rec):
                 s_dt = po_rec.date_order or po_rec.date_approve or po_rec.create_date or p_start
@@ -2840,10 +3014,10 @@ class ProjectTask(models.Model):
             def _get_mo_dates(mo_rec):
                 s_dt = mo_rec.date_start or mo_rec.create_date or p_start
                 s = utc_to_local_dt(self.env, s_dt, user_tz=user_tz)
-                if mo_rec.date_finished:
-                    e = utc_to_local_dt(self.env, mo_rec.date_finished, user_tz=user_tz)
-                elif mo_rec.date_deadline:
+                if mo_rec.date_deadline:
                     e = utc_to_local_dt(self.env, mo_rec.date_deadline, user_tz=user_tz)
+                elif mo_rec.state == "done" and mo_rec.date_finished:
+                    e = utc_to_local_dt(self.env, mo_rec.date_finished, user_tz=user_tz)
                 else:
                     e = s + timedelta(days=3)
                 if e <= s:
@@ -3037,22 +3211,48 @@ class ProjectTask(models.Model):
                 if tm.get("is_done") or t.state in ("1_done", "03_approved", "1_canceled"):
                     continue
                 t_s, t_e = get_task_dates(t)
-                t_has_d = bool(t.planned_date_start or t.planned_date_end or t.date_deadline)
-                if t_has_d and t_e < now_local:
+                t_has_end_or_dl = bool(t.planned_date_end or t.date_deadline or (t.parent_id and t.parent_id.planned_date_end))
+                if t_has_end_or_dl and t_e < now_local:
                     p_has_overdue_task = True
                     break
                 if t.date_deadline and utc_to_local_dt(self.env, t.date_deadline, user_tz=user_tz) < now_local:
                     p_has_overdue_task = True
                     break
 
+            if is_p_continuous and (p_is_done or p_state in ("1_done", "03_approved", "1_canceled")):
+                is_p_continuous = False
+
             is_p_overdue_past = False
-            if not p_is_done and p_state not in ("1_done", "03_approved", "1_canceled") and p_prog < 1.0:
+            if not is_p_continuous and not p_is_done and p_state not in ("1_done", "03_approved", "1_canceled", "04_on_hold") and p_prog < 1.0:
                 eff_p_deadline = p_delay.get("deadline")
                 if (p_end and p_end < now_local) or (p_own_dl and p_own_dl < now_local) or (eff_p_deadline and eff_p_deadline < now_local):
                     is_p_overdue_past = True
 
             if is_only_overdue and not is_p_overdue_past:
                 continue
+            if is_only_active and (
+                p_is_done
+                or p_state in ("1_done", "03_approved", "1_canceled")
+                or p_update_status == "done"
+                or "cancel" in p_stage_name
+                or "atšauk" in p_stage_name
+            ):
+                continue
+
+            p_has_early_finish = False
+            p_early_minutes = 0
+            p_early_hours = 0.0
+            p_early_days = 0
+            p_actual_finish_str = False
+            p_act_date = getattr(p, "actual_finish_date", False)
+            if p_is_done and not p_has_deadline_delay and p_act_date and p_end:
+                p_act_loc = datetime.combine(p_act_date, time(17, 0, 0))
+                if p_act_loc < p_end:
+                    p_has_early_finish = True
+                    p_early_minutes = ceil_minutes_between(p_act_loc, p_end)
+                    p_early_hours = round(p_early_minutes / 60.0, 1)
+                    p_early_days = (p_end.date() - p_act_loc.date()).days
+                    p_actual_finish_str = p_act_loc.strftime(dt_format)
 
             gantt_tasks.append({
                 "id": p_key,
@@ -3071,11 +3271,11 @@ class ProjectTask(models.Model):
                 "delay_days": p_delay_days,
                 "delay_hours": p_delay_hours,
                 "delay_minutes": p_delay_minutes,
-                "has_early_finish": False,
-                "early_minutes": 0,
-                "early_hours": 0.0,
-                "early_days": 0,
-                "actual_finish_date": False,
+                "has_early_finish": p_has_early_finish,
+                "early_minutes": p_early_minutes,
+                "early_hours": p_early_hours,
+                "early_days": p_early_days,
+                "actual_finish_date": p_actual_finish_str,
                 "progress": round(p_prog, 2),
                 "progress_percent": round(p_prog * 100, 1),
                 "allocated_hours": format_hours_label(display_proj_alloc),
@@ -3093,6 +3293,7 @@ class ProjectTask(models.Model):
                 "last_update_status": p_update_status,
                 "stage_name": p_stage_display,
                 "is_overdue_past": is_p_overdue_past,
+                "is_continuous": is_p_continuous,
                 "has_overdue_tasks": p_has_overdue_task,
                 "is_project": True,
                 "is_milestone": False,
@@ -3244,6 +3445,10 @@ class ProjectTask(models.Model):
                 m_own_dl = None
                 if m_dl_base:
                     m_own_dl = utc_to_local_dt(self.env, m_dl_base, user_tz=user_tz) if isinstance(m_dl_base, datetime) else datetime.combine(m_dl_base, time(17, 0, 0))
+                if m.is_reached and m.reached_date:
+                    m_reached_dt = datetime.combine(m.reached_date, time(17, 0, 0))
+                    if m_end and m_reached_dt > m_end and (not m_own_dl or m_reached_dt > m_own_dl):
+                        m_own_dl = m_reached_dt
                 m_delay = compute_container_delay(m_own_dl, m_end, m_is_done, m_tasks)
                 m_delay_kind = m_delay["kind"]
                 if m_delay["deadline"]:
@@ -3255,6 +3460,20 @@ class ProjectTask(models.Model):
                     m_delay_days = m_delay["days"]
                     m_delay_hours = round(m_delay["seconds"] / 3600.0, 1)
                     m_delay_minutes = int(round(m_delay["seconds"] / 60.0))
+
+                m_has_early_finish = False
+                m_early_minutes = 0
+                m_early_hours = 0.0
+                m_early_days = 0
+                m_actual_finish_str = False
+                if m_is_done and not m_has_deadline_delay and m.is_reached and m.reached_date and m_end:
+                    m_act_loc = datetime.combine(m.reached_date, time(17, 0, 0))
+                    if m_act_loc < m_end:
+                        m_has_early_finish = True
+                        m_early_minutes = ceil_minutes_between(m_act_loc, m_end)
+                        m_early_hours = round(m_early_minutes / 60.0, 1)
+                        m_early_days = (m_end.date() - m_act_loc.date()).days
+                        m_actual_finish_str = m_act_loc.strftime(dt_format)
 
                 m_task_count = len(m_tasks)
                 m_done_task_count = sum(
@@ -3283,11 +3502,11 @@ class ProjectTask(models.Model):
                     "delay_days": m_delay_days,
                     "delay_hours": m_delay_hours,
                     "delay_minutes": m_delay_minutes,
-                    "has_early_finish": False,
-                    "early_minutes": 0,
-                    "early_hours": 0.0,
-                    "early_days": 0,
-                    "actual_finish_date": False,
+                    "has_early_finish": m_has_early_finish,
+                    "early_minutes": m_early_minutes,
+                    "early_hours": m_early_hours,
+                    "early_days": m_early_days,
+                    "actual_finish_date": m_actual_finish_str,
                     "progress": round(m_prog, 2),
                     "progress_percent": round(m_prog * 100, 1),
                     "allocated_hours": format_hours_label(m_allocated),
@@ -3348,7 +3567,7 @@ class ProjectTask(models.Model):
             if pog_gantt_end <= pog_gantt_start:
                 pog_gantt_end = pog_gantt_start + timedelta(days=1)
 
-            all_pos_done = bool(p_pos and all(po.state in ("purchase", "done") for po in p_pos))
+            all_pos_done = bool(p_pos and all((getattr(po, "receipt_status", False) == "full") or (po.state == "done" and not getattr(po, "picking_ids", False)) for po in p_pos))
             pog_prog = 1.0 if all_pos_done else (0.5 if p_pos else 0.0)
 
             gantt_tasks.append({
@@ -3378,49 +3597,7 @@ class ProjectTask(models.Model):
             })
 
             for po in p_pos:
-                po_s, po_e = _get_po_dates(po)
-                po_gantt_s = datetime.combine(po_s.date(), time.min)
-                if po_e.time() > time.min:
-                    po_gantt_e = datetime.combine(po_e.date() + timedelta(days=1), time.min)
-                else:
-                    po_gantt_e = datetime.combine(po_e.date(), time.min)
-                if po_gantt_e <= po_gantt_s:
-                    po_gantt_e = po_gantt_s + timedelta(days=1)
-
-                po_is_done = (po.state in ("purchase", "done"))
-                prog = 1.0 if po_is_done else 0.5
-                gantt_tasks.append({
-                    "id": f"po_{po.id}",
-                    "odoo_id": po.id,
-                    "text": f"{po.name} - {po.partner_id.name}" if po.partner_id else po.name,
-                    "type": "task",
-                    "open": False,
-                    "parent": po_group_key,
-                    "start_date": po_gantt_s.strftime(dt_format),
-                    "end_date": po_gantt_e.strftime(dt_format),
-                    "work_start_date": po_s.strftime(dt_format),
-                    "work_end_date": po_e.strftime(dt_format),
-                    "is_po": True,
-                    "is_mo": False,
-                    "is_delivery": False,
-                    "is_project": False,
-                    "is_milestone": False,
-                    "is_group": False,
-                    "readonly": True,
-                    "color": "#16a34a" if po_is_done else "#0284c7",
-                    "state": po.state,
-                    "is_done": po_is_done,
-                    "progress": prog,
-                    "progress_percent": int(prog * 100),
-                    "assignees": po.user_id.name if po.user_id else "",
-                    "assignee_avatars": [{
-                        "id": po.user_id.id,
-                        "name": po.user_id.name,
-                        "avatar": f"/web/image/res.users/{po.user_id.id}/avatar_128",
-                    }] if po.user_id else [],
-                    "project_id": p.id,
-                    "project_name": p.name or "",
-                })
+                gantt_tasks.append(_build_supply_gantt_item("po", po, po_group_key, p_start, p, po.user_id if hasattr(po, "user_id") else False))
 
             # -----------------------------------------------------------------
             # SECTION 3: ⚙️ Gamyba (Manufacturing Orders)
@@ -3464,49 +3641,7 @@ class ProjectTask(models.Model):
             })
 
             for mo in p_mos:
-                mo_s, mo_e = _get_mo_dates(mo)
-                mo_gantt_s = datetime.combine(mo_s.date(), time.min)
-                if mo_e.time() > time.min:
-                    mo_gantt_e = datetime.combine(mo_e.date() + timedelta(days=1), time.min)
-                else:
-                    mo_gantt_e = datetime.combine(mo_e.date(), time.min)
-                if mo_gantt_e <= mo_gantt_s:
-                    mo_gantt_e = mo_gantt_s + timedelta(days=1)
-
-                mo_is_done = (mo.state == "done")
-                prog = 1.0 if mo_is_done else (0.5 if mo.state == "progress" else 0.0)
-                gantt_tasks.append({
-                    "id": f"mo_{mo.id}",
-                    "odoo_id": mo.id,
-                    "text": f"{mo.name}: {mo.product_id.display_name or mo.product_id.name or ''}",
-                    "type": "task",
-                    "open": False,
-                    "parent": mo_group_key,
-                    "start_date": mo_gantt_s.strftime(dt_format),
-                    "end_date": mo_gantt_e.strftime(dt_format),
-                    "work_start_date": mo_s.strftime(dt_format),
-                    "work_end_date": mo_e.strftime(dt_format),
-                    "is_mo": True,
-                    "is_po": False,
-                    "is_delivery": False,
-                    "is_project": False,
-                    "is_milestone": False,
-                    "is_group": False,
-                    "readonly": True,
-                    "color": "#16a34a" if mo_is_done else "#ea580c",
-                    "state": mo.state,
-                    "is_done": mo_is_done,
-                    "progress": prog,
-                    "progress_percent": int(prog * 100),
-                    "assignees": mo.user_id.name if hasattr(mo, "user_id") and mo.user_id else "",
-                    "assignee_avatars": [{
-                        "id": mo.user_id.id,
-                        "name": mo.user_id.name,
-                        "avatar": f"/web/image/res.users/{mo.user_id.id}/avatar_128",
-                    }] if hasattr(mo, "user_id") and mo.user_id else [],
-                    "project_id": p.id,
-                    "project_name": p.name or "",
-                })
+                gantt_tasks.append(_build_supply_gantt_item("mo", mo, mo_group_key, p_start, p, mo.user_id if hasattr(mo, "user_id") else False))
 
             # -----------------------------------------------------------------
             # SECTION 4: 🚚 Pristatymas (Deliveries)
@@ -3550,164 +3685,109 @@ class ProjectTask(models.Model):
             })
 
             for pick in p_deliveries:
-                pick_s, pick_e = _get_delivery_dates(pick)
-                pick_gantt_s = datetime.combine(pick_s.date(), time.min)
-                if pick_e.time() > time.min:
-                    pick_gantt_e = datetime.combine(pick_e.date() + timedelta(days=1), time.min)
-                else:
-                    pick_gantt_e = datetime.combine(pick_e.date(), time.min)
-                if pick_gantt_e <= pick_gantt_s:
-                    pick_gantt_e = pick_gantt_s + timedelta(days=1)
+                gantt_tasks.append(_build_supply_gantt_item("delivery", pick, delivery_group_key, p_start, p, pick.user_id if hasattr(pick, "user_id") else False))
 
-                pick_is_done = (pick.state == "done")
-                prog = 1.0 if pick_is_done else 0.0
+        # Standalone MOs, POs, and Deliveries without a project (ACL-checked, NO .sudo())
+        if not explicit_proj_id and not is_only_overdue and not cleaned_domain and not user_id_int:
+            def _append_standalone_group(kind, recs, group_id, group_label, group_flag, color, all_done, prog, user_field_ok):
+                if not recs:
+                    return
+                built_items = [
+                    _build_supply_gantt_item(kind, r, group_id, now, False, r.user_id if user_field_ok else False)
+                    for r in recs
+                ]
+                g_start = min(item["start_date"] for item in built_items)
+                g_end = max(item["end_date"] for item in built_items)
+                w_start = min(item["work_start_date"] for item in built_items)
+                w_end = max(item["work_end_date"] for item in built_items)
                 gantt_tasks.append({
-                    "id": f"delivery_{pick.id}",
-                    "odoo_id": pick.id,
-                    "text": f"{pick.name} - {pick.partner_id.name}" if pick.partner_id else pick.name,
+                    "id": group_id,
+                    "odoo_id": 0,
+                    "text": group_label,
                     "type": "task",
                     "open": False,
-                    "parent": delivery_group_key,
-                    "start_date": pick_gantt_s.strftime(dt_format),
-                    "end_date": pick_gantt_e.strftime(dt_format),
-                    "work_start_date": pick_s.strftime(dt_format),
-                    "work_end_date": pick_e.strftime(dt_format),
-                    "is_delivery": True,
-                    "is_po": False,
-                    "is_mo": False,
+                    "parent": None,
+                    "start_date": g_start,
+                    "end_date": g_end,
+                    "work_start_date": w_start,
+                    "work_end_date": w_end,
+                    "is_group": True,
+                    group_flag: True,
                     "is_project": False,
                     "is_milestone": False,
-                    "is_group": False,
                     "readonly": True,
-                    "color": "#16a34a" if pick_is_done else "#0f766e",
-                    "state": pick.state,
-                    "is_done": pick_is_done,
+                    "color": color,
+                    "state": "done" if all_done else "01_in_progress",
                     "progress": prog,
                     "progress_percent": int(prog * 100),
-                    "assignees": pick.user_id.name if pick.user_id else "",
-                    "assignee_avatars": [{
-                        "id": pick.user_id.id,
-                        "name": pick.user_id.name,
-                        "avatar": f"/web/image/res.users/{pick.user_id.id}/avatar_128",
-                    }] if pick.user_id else [],
-                    "project_id": p.id,
-                    "project_name": p.name or "",
                 })
+                gantt_tasks.extend(built_items)
 
-        # Standalone MOs without project (ACL-checked, NO .sudo())
-        if has_mrp and not explicit_proj_id and not is_only_overdue and not cleaned_domain and not user_id_int:
-            try:
-                mo_model = self.env["mrp.production"]
-                if "project_id" in mo_model._fields:
-                    standalone_mos = mo_model.search([
-                        ("project_id", "=", False),
-                        ("state", "!=", "cancel"),
-                    ], order="date_start, id", limit=1000)
-                else:
-                    standalone_mos = mo_model.browse([])
-                if standalone_mos:
-                    mo_has_user = "user_id" in mo_model._fields
+            if has_mrp:
+                try:
+                    mo_model = self.env["mrp.production"]
+                    mo_dom = [("state", "!=", "cancel")]
+                    if "project_id" in mo_model._fields:
+                        mo_dom.append(("project_id", "=", False))
+                    standalone_mos = mo_model.search(mo_dom, order="date_start, id", limit=1000)
+                    if standalone_mos:
+                        all_smo_done = all(mo.state == "done" for mo in standalone_mos)
+                        _append_standalone_group(
+                            "mo", standalone_mos, "mo_standalone_group",
+                            "⚙️ Kiti gamybos užsakymai (be projektų)", "is_mo_standalone_group",
+                            "#ea580c", all_smo_done, 1.0 if all_smo_done else 0.5,
+                            "user_id" in mo_model._fields,
+                        )
+                except Exception as e:
+                    _logger.warning("Error fetching standalone MOs: %s", e)
 
-                    def _get_smo_dates(mo_rec):
-                        s_dt = mo_rec.date_start or mo_rec.create_date or now
-                        s = utc_to_local_dt(self.env, s_dt, user_tz=user_tz)
-                        if mo_rec.date_finished:
-                            e = utc_to_local_dt(self.env, mo_rec.date_finished, user_tz=user_tz)
-                        elif mo_rec.date_deadline:
-                            e = utc_to_local_dt(self.env, mo_rec.date_deadline, user_tz=user_tz)
-                        else:
-                            e = s + timedelta(days=3)
-                        if e <= s:
-                            e = s + timedelta(days=1)
-                        return s, e
+            if has_purchase:
+                try:
+                    po_model = self.env["purchase.order"]
+                    proj_po_ids = {po.id for pos in pos_by_proj_id.values() for po in pos}
+                    po_dom = [("state", "!=", "cancel")]
+                    if "project_id" in po_model._fields:
+                        po_dom.append(("project_id", "=", False))
+                    if proj_po_ids:
+                        po_dom.append(("id", "not in", list(proj_po_ids)))
+                    standalone_pos = po_model.search(po_dom, order="date_order, id", limit=1000)
+                    if standalone_pos:
+                        all_spo_done = all((getattr(po, "receipt_status", False) == "full") or (po.state == "done" and not getattr(po, "picking_ids", False)) for po in standalone_pos)
+                        _append_standalone_group(
+                            "po", standalone_pos, "po_standalone_group",
+                            "📦 Kiti pirkimo užsakymai (be projektų)", "is_po_standalone_group",
+                            "#0284c7", all_spo_done, 1.0 if all_spo_done else 0.5,
+                            "user_id" in po_model._fields,
+                        )
+                except Exception as e:
+                    _logger.warning("Error fetching standalone POs: %s", e)
 
-                    smo_pairs = [_get_smo_dates(mo) for mo in standalone_mos]
-                    smo_s = min(p[0] for p in smo_pairs)
-                    smo_e = max(p[1] for p in smo_pairs)
-                    smo_gantt_start = datetime.combine(smo_s.date(), time.min)
-                    if smo_e.time() > time.min:
-                        smo_gantt_end = datetime.combine(smo_e.date() + timedelta(days=1), time.min)
-                    else:
-                        smo_gantt_end = datetime.combine(smo_e.date(), time.min)
-                    if smo_gantt_end <= smo_gantt_start:
-                        smo_gantt_end = smo_gantt_start + timedelta(days=1)
-
-                    all_smo_done = all(mo.state == "done" for mo in standalone_mos)
-                    smo_prog = 1.0 if all_smo_done else 0.5
-                    gantt_tasks.append({
-                        "id": "mo_standalone_group",
-                        "odoo_id": 0,
-                        "text": "⚙️ Kiti gamybos užsakymai (be projektų)",
-                        "type": "task",
-                        "open": False,
-                        "parent": None,
-                        "start_date": smo_gantt_start.strftime(dt_format),
-                        "end_date": smo_gantt_end.strftime(dt_format),
-                        "work_start_date": smo_s.strftime(dt_format),
-                        "work_end_date": smo_e.strftime(dt_format),
-                        "is_group": True,
-                        "is_mo_standalone_group": True,
-                        "is_project": False,
-                        "is_milestone": False,
-                        "readonly": True,
-                        "color": "#ea580c",
-                        "state": "done" if all_smo_done else "01_in_progress",
-                        "progress": smo_prog,
-                        "progress_percent": int(smo_prog * 100),
-                    })
-                    for mo in standalone_mos:
-                        mo_s, mo_e = _get_smo_dates(mo)
-                        mo_gantt_s = datetime.combine(mo_s.date(), time.min)
-                        if mo_e.time() > time.min:
-                            mo_gantt_e = datetime.combine(mo_e.date() + timedelta(days=1), time.min)
-                        else:
-                            mo_gantt_e = datetime.combine(mo_e.date(), time.min)
-                        if mo_gantt_e <= mo_gantt_s:
-                            mo_gantt_e = mo_gantt_s + timedelta(days=1)
-
-                        mo_done = (mo.state == "done")
-                        prog = 1.0 if mo_done else (0.5 if mo.state == "progress" else 0.0)
-                        mo_user = mo.user_id if mo_has_user else False
-                        gantt_tasks.append({
-                            "id": f"mo_{mo.id}",
-                            "odoo_id": mo.id,
-                            "text": f"{mo.name}: {mo.product_id.display_name or mo.product_id.name or ''}",
-                            "type": "task",
-                            "open": False,
-                            "parent": "mo_standalone_group",
-                            "start_date": mo_gantt_s.strftime(dt_format),
-                            "end_date": mo_gantt_e.strftime(dt_format),
-                            "work_start_date": mo_s.strftime(dt_format),
-                            "work_end_date": mo_e.strftime(dt_format),
-                            "is_mo": True,
-                            "is_po": False,
-                            "is_delivery": False,
-                            "is_project": False,
-                            "is_milestone": False,
-                            "is_group": False,
-                            "readonly": True,
-                            "color": "#16a34a" if mo_done else "#ea580c",
-                            "state": mo.state,
-                            "is_done": mo_done,
-                            "progress": prog,
-                            "progress_percent": int(prog * 100),
-                            "assignees": mo_user.name if mo_user else "",
-                            "assignee_avatars": [{
-                                "id": mo_user.id,
-                                "name": mo_user.name,
-                                "avatar": f"/web/image/res.users/{mo_user.id}/avatar_128",
-                            }] if mo_user else [],
-                            "project_id": False,
-                            "project_name": "Be projekto",
-                        })
-            except Exception as e:
-                _logger.warning("Error fetching standalone MOs: %s", e)
+            if has_delivery:
+                try:
+                    pick_model = self.env["stock.picking"]
+                    proj_del_ids = {pk.id for pks in deliveries_by_proj_id.values() for pk in pks}
+                    del_dom = [("picking_type_code", "=", "outgoing"), ("state", "!=", "cancel")]
+                    if proj_del_ids:
+                        del_dom.append(("id", "not in", list(proj_del_ids)))
+                    standalone_dels = pick_model.search(del_dom, order="scheduled_date, id", limit=1000)
+                    if standalone_dels:
+                        all_sdel_done = all(pk.state == "done" for pk in standalone_dels)
+                        _append_standalone_group(
+                            "delivery", standalone_dels, "delivery_standalone_group",
+                            "🚚 Kiti pristatymai (be projektų)", "is_delivery_standalone_group",
+                            "#0f766e", all_sdel_done, 1.0 if all_sdel_done else 0.0,
+                            "user_id" in pick_model._fields,
+                        )
+                except Exception as e:
+                    _logger.warning("Error fetching standalone Deliveries: %s", e)
 
         # 2. Any tasks without project
         all_task_id_set = set(tasks.ids)
         other_tasks = tasks.filtered(lambda t: t.id not in added_task_ids)
         if is_only_overdue:
             other_tasks = other_tasks.filtered(lambda t: (not get_task_metrics(t).get("is_done")) and t.state not in ("1_done", "03_approved", "1_canceled") and ((get_task_dates(t)[1] < now_local) or (t.date_deadline and utc_to_local_dt(self.env, t.date_deadline, user_tz=user_tz) < now_local) or (delay_cache.get(t.id) and delay_cache[t.id].get("kind"))))
+        elif is_only_active:
+            other_tasks = other_tasks.filtered(lambda t: (not get_task_metrics(t).get("is_done")) and t.state not in ("1_done", "03_approved", "1_canceled"))
         for t in other_tasks:
             parent_k = f"task_{t.parent_id.id}" if (t.parent_id and t.parent_id.id in added_task_ids) else None
             add_task_hierarchy(t, parent_k, all_task_id_set)
@@ -3739,6 +3819,8 @@ class ProjectTask(models.Model):
             "can_edit": can_edit,
             "can_track_time": can_track_time,
             "has_mrp": has_mrp,
+            "has_purchase": has_purchase,
+            "has_delivery": has_delivery,
         }
 
     @api.model
@@ -4200,7 +4282,7 @@ class ProjectTask(models.Model):
 
     # GanntLT Aliases for seamless RPC calls
     @api.model
-    def get_gannt_lt_data(self, project_id=None, domain=None, date_start=None, date_end=None, user_id=None, model_name=None, only_overdue=False, only_mo=False):
+    def get_gannt_lt_data(self, project_id=None, domain=None, date_start=None, date_end=None, user_id=None, model_name=None, only_active=False, only_overdue=False, only_mo=False, only_po=False, only_delivery=False):
         return self.get_all_in_one_timeline_data(
             project_id=project_id,
             domain=domain,
@@ -4208,8 +4290,11 @@ class ProjectTask(models.Model):
             date_end=date_end,
             user_id=user_id,
             model_name=model_name,
+            only_active=only_active,
             only_overdue=only_overdue,
             only_mo=only_mo,
+            only_po=only_po,
+            only_delivery=only_delivery,
         )
 
     @api.model

@@ -962,11 +962,7 @@ class GanntLTExportController(http.Controller):
         user = request.env.user
         if not request.env.su and (
             not user.has_group("base.group_user")
-            or not (
-                user.has_group("GanntLT.group_gannt_lt_user")
-                or user.has_group("project.group_project_manager")
-                or user.has_group("base.group_system")
-            )
+            or not user.has_group("GanntLT.group_gannt_lt_user")
         ):
             raise Forbidden("You do not have permission to export GanntLT timelines.")
 
@@ -981,10 +977,13 @@ class GanntLTExportController(http.Controller):
             params = post
 
         raw_proj_id = params.get("project_id")
+        only_active = bool(params.get("only_active") or raw_proj_id == "active")
         only_overdue = bool(params.get("only_overdue") or raw_proj_id == "overdue")
         only_mo = bool(params.get("only_mo") or raw_proj_id == "only_mo")
+        only_po = bool(params.get("only_po") or raw_proj_id == "only_po")
+        only_delivery = bool(params.get("only_delivery") or raw_proj_id == "only_delivery")
         project_id = 0
-        if raw_proj_id and raw_proj_id not in ("overdue", "only_mo"):
+        if raw_proj_id and raw_proj_id not in ("active", "overdue", "only_mo", "only_po", "only_delivery"):
             try:
                 project_id = int(raw_proj_id)
             except (ValueError, TypeError):
@@ -1002,21 +1001,30 @@ class GanntLTExportController(http.Controller):
 
         timeline_data = request.env["project.task"].get_all_in_one_timeline_data(
             project_id=project_id if project_id > 0 else None,
+            only_active=only_active,
             only_overdue=only_overdue,
             only_mo=only_mo,
+            only_po=only_po,
+            only_delivery=only_delivery,
             domain=domain,
         )
         tasks = timeline_data.get("tasks", [])
 
         # Determine primary project name for filename
         project_name = ""
-        if only_overdue:
+        if only_active:
+            project_name = "Visi_aktyvus_projektai"
+        elif only_overdue:
             project_name = "Veluojantys_projektai"
         elif only_mo:
             project_name = "Visi_gamybos_uzsakymai"
+        elif only_po:
+            project_name = "Visi_pirkimo_uzsakymai"
+        elif only_delivery:
+            project_name = "Visi_pristatymai"
         elif project_id > 0:
             proj_rec = request.env["project.project"].browse(project_id).exists()
-            if proj_rec:
+            if proj_rec and proj_rec.has_access("read"):
                 project_name = proj_rec.name
         if not project_name and tasks:
             for t in tasks:

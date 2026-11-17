@@ -9,6 +9,7 @@ class ProjectMilestone(models.Model):
 
     date_start = fields.Date(string="Start Date", copy=False, index=True)
     planned_date_end = fields.Date(string="Planned End Date", copy=False, index=True)
+    deadline_is_auto = fields.Boolean(copy=False, default=False)
 
     # NOTE: the milestone `deadline` is user data. It is NEVER derived from the planned end date or
     # from task deadlines (that used to create phantom deadlines and fake delays). Delays are computed
@@ -39,7 +40,36 @@ class ProjectMilestone(models.Model):
 
     def write(self, vals):
         vals = dict(vals)
+        marking_reached = bool(vals.get("is_reached"))
+        unmarking_reached = "is_reached" in vals and not vals["is_reached"]
+        pre_unreached = self.filtered(lambda m: not m.is_reached) if marking_reached else self.browse()
+        pre_reached = self.filtered(lambda m: m.is_reached) if unmarking_reached else self.browse()
+        if "deadline" in vals and "deadline_is_auto" not in vals:
+            vals["deadline_is_auto"] = False
         res = super().write(vals)
+        if marking_reached and pre_unreached:
+            fin_date = fields.Date.context_today(self)
+            for ms in pre_unreached:
+                planned_end = ms.planned_date_end or ms.deadline
+                upd = {}
+                if planned_end and not ms.planned_date_end:
+                    upd["planned_date_end"] = planned_end
+                if planned_end and fin_date > planned_end and "deadline" not in vals:
+                    upd["deadline"] = fin_date
+                    upd["deadline_is_auto"] = True
+                elif not planned_end:
+                    upd["planned_date_end"] = fin_date
+                    if not ms.date_start:
+                        upd["date_start"] = fin_date - timedelta(days=7)
+                if upd:
+                    super(ProjectMilestone, ms).write(upd)
+        if unmarking_reached and pre_reached:
+            for ms in pre_reached:
+                if ms.deadline_is_auto and "deadline" not in vals:
+                    super(ProjectMilestone, ms).write({
+                        "deadline": ms.planned_date_end or False,
+                        "deadline_is_auto": False,
+                    })
         if any(k in vals for k in ("deadline", "planned_date_end", "date_start")):
             for ms in self:
                 sync_vals = {}

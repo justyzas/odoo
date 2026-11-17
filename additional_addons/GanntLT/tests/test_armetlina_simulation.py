@@ -190,6 +190,10 @@ def cleanup_old_test_projects(env):
             # Delete associated milestones
             if "project.milestone" in env:
                 env["project.milestone"].sudo().search([("project_id", "=", p.id)]).unlink()
+            # Delete associated project updates (project_update_project_id_fkey)
+            if "project.update" in env:
+                p.sudo().write({"last_update_id": False})
+                env["project.update"].sudo().search([("project_id", "=", p.id)]).unlink()
             tasks = task_obj.search([("project_id", "=", p.id)])
             tasks.unlink()
             p.unlink()

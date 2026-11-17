@@ -59,12 +59,7 @@ class ProjectTaskPauseWizard(models.TransientModel):
         task.check_access("write")
 
         if task.active_user_id and task.active_user_id != self.env.user:
-            can_manage = (
-                self.env.is_superuser()
-                or self.env.user.has_group("base.group_system")
-                or self.env.user.has_group("project.group_project_manager")
-                or self.env.user.has_group("GanntLT.group_gannt_lt_manager")
-            )
+            can_manage = task._has_timer_override_rights()
             if not can_manage:
                 raise UserError(
                     _("Pristabdyti užduotį gali tik ją vykdantis vartotojas (%s) arba projekto vadovas.")

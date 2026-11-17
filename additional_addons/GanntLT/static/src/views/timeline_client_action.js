@@ -74,10 +74,9 @@ export function getZoomPxPerDay(zoomLevel, visibleWidth = 1100) {
     const z = Math.max(0, Math.min(100, Number(zoomLevel) || 0));
     const t = z / 100.0;
     const vw = Math.max(600, Number(visibleWidth) || 1100);
-    const minPx = vw / 2000.0; // At 0% zoom: ~5.5 years across visible width
-    const p95 = vw * 24.0; // At 95% zoom: exactly 60 minutes (1 hour) fits visible width
-    const base = Math.pow(p95 / minPx, 1.0 / 0.95);
-    return minPx * Math.pow(base, t);
+    const minPx = vw / 730.0; // At 0% zoom: ~2 years across visible width (clearer bars, smooth ramp)
+    const maxPx = vw * 12.0; // At 100% zoom: ~2 hours across visible width (1-minute resolution)
+    return minPx * Math.pow(maxPx / minPx, t);
 }
 
 export const ZOOM_PX_PER_DAY = new Proxy({}, {
@@ -658,9 +657,7 @@ export function setTimelineViewportWidth(width) {
  * so snapping/positioning can never disagree with what the header shows.
  */
 export function isExactTimeResolution(zoomLevel = 100, visibleWidth = _timelineViewportWidth) {
-    const pxPerDay = getZoomPxPerDay(zoomLevel, visibleWidth);
-    const pxPerHour = pxPerDay / 24.0;
-    return zoomLevel >= 50 && (pxPerHour * 2) >= 12;
+    return (Number(zoomLevel) || 0) >= 50;
 }
 
 /**
@@ -993,11 +990,11 @@ export class GanntLTAction extends Component {
         // Upon reloading Odoo or newly entering Projects, always start at 0% scale with all items collapsed (Suskleisti).
         let savedState = null;
         try {
-            const raw = sessionStorage.getItem(TIMELINE_VIEW_STATE_KEY);
+            const raw = (typeof window !== "undefined" && window.localStorage && window.localStorage.getItem(TIMELINE_VIEW_STATE_KEY))
+                || sessionStorage.getItem(TIMELINE_VIEW_STATE_KEY);
             if (raw) {
                 const parsed = JSON.parse(raw);
-                sessionStorage.removeItem(TIMELINE_VIEW_STATE_KEY);
-                if (parsed && parsed.fromFormNavigation) {
+                if (parsed && typeof parsed === "object") {
                     savedState = parsed;
                 }
             }
@@ -1005,11 +1002,10 @@ export class GanntLTAction extends Component {
 
         let initialZoom = DEFAULT_OVERVIEW_ZOOM;
         if (savedState && typeof savedState.zoomLevel === "number") {
-            const snapped = Math.max(0, Math.min(100, Math.round(savedState.zoomLevel / 5) * 5));
-            initialZoom = snapped;
+            initialZoom = Math.max(0, Math.min(100, Math.round(savedState.zoomLevel)));
         }
 
-        let initialProjId = "0";
+        let initialProjId = "active";
         if (defaultProjId) {
             initialProjId = String(defaultProjId);
         } else if (savedState && savedState.selectedProjectId !== undefined && savedState.selectedProjectId !== null) {
@@ -1026,6 +1022,8 @@ export class GanntLTAction extends Component {
             canEdit: false,
             canTrackTime: false,
             hasMrp: false,
+            hasPurchase: false,
+            hasDelivery: false,
             showWorkHoursDropdown: false,
             workingHours: this.loadWorkingHoursSchedule(),
         });
@@ -1136,6 +1134,7 @@ export class GanntLTAction extends Component {
         });
 
         onWillUnmount(() => {
+            this.saveViewState();
             this._isDestroyed = true;
             if (this.onWindowResize) {
                 window.removeEventListener("resize", this.onWindowResize);
@@ -1377,8 +1376,19 @@ export class GanntLTAction extends Component {
                 centerDate: centerDate,
                 openStates: openStates,
             };
-            sessionStorage.setItem(TIMELINE_VIEW_STATE_KEY, JSON.stringify(stateObj));
+            if (typeof window !== "undefined" && window.localStorage) {
+                window.localStorage.setItem(TIMELINE_VIEW_STATE_KEY, JSON.stringify(stateObj));
+            }
         } catch {}
+    }
+
+    _scheduleSaveViewState() {
+        if (this._isDestroyed) return;
+        this._clearTimeout(this._saveViewStateTimer);
+        this._saveViewStateTimer = this._setTimeout(() => {
+            this._saveViewStateTimer = null;
+            this.saveViewState();
+        }, 150);
     }
 
     hideTooltip() {
@@ -1749,7 +1759,8 @@ export class GanntLTAction extends Component {
                         }
                         const styleAttr = customStyle ? ` style="${customStyle}"` : "";
                         const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Projektas vėluoja: suplanuota pabaiga praeityje, bet darbas nebaigtas")}"><i class="fa fa-fire text-white"></i></span>` : "";
-                        return `${fireIcon}<i class="${icon} me-1"${styleAttr}></i><b>${escapeHtml(task.text)}</b>`;
+                        const infIcon = task.is_continuous ? `<span class="tree_continuous_badge" title="${_t("Tęstinis projektas be termino")}">∞</span>` : "";
+                        return `${fireIcon}${infIcon}<i class="${icon} me-1"${styleAttr}></i><b>${escapeHtml(task.text)}</b>`;
                     }
                     if (task.is_milestone) {
                         const icon = (task.is_done || task.state === "1_done")
@@ -1762,22 +1773,25 @@ export class GanntLTAction extends Component {
                         return `<b>${escapeHtml(task.text)}</b>`;
                     }
                     if (task.is_po) {
-                        const icon = (task.is_done || task.state === "purchase" || task.state === "done")
+                        const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Pirkimo užsakymas vėluoja: numatytas pristatymas praeityje, bet prekės negautos")}"><i class="fa fa-fire text-white"></i></span>` : "";
+                        const icon = task.is_done
                             ? "fa fa-check-circle text-success"
                             : "fa fa-cube text-info";
-                        return `<i class="${icon} me-1" title="${_t("Pirkimo užsakymas")}"></i>${escapeHtml(task.text)}`;
+                        return `${fireIcon}<i class="${icon} me-1" title="${_t("Pirkimo užsakymas")}"></i>${escapeHtml(task.text)}`;
                     }
                     if (task.is_mo) {
+                        const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Gamybos užsakymas vėluoja: terminas praeityje, bet gamyba nebaigta")}"><i class="fa fa-fire text-white"></i></span>` : "";
                         const icon = (task.is_done || task.state === "done")
                             ? "fa fa-check-circle text-success"
                             : "fa fa-cogs text-warning";
-                        return `<i class="${icon} me-1" title="${_t("Gamybos užsakymas")}"></i>${escapeHtml(task.text)}`;
+                        return `${fireIcon}<i class="${icon} me-1" title="${_t("Gamybos užsakymas")}"></i>${escapeHtml(task.text)}`;
                     }
                     if (task.is_delivery) {
+                        const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Pristatymas vėluoja: terminas praeityje, bet nebaigta")}"><i class="fa fa-fire text-white"></i></span>` : "";
                         const icon = (task.is_done || task.state === "done")
                             ? "fa fa-check-circle text-success"
                             : "fa fa-truck text-primary";
-                        return `<i class="${icon} me-1" title="${_t("Pristatymo užsakymas")}"></i>${escapeHtml(task.text)}`;
+                        return `${fireIcon}<i class="${icon} me-1" title="${_t("Pristatymo užsakymas")}"></i>${escapeHtml(task.text)}`;
                     }
                     const isSubtask = task.parent && typeof task.parent === "string" && task.parent.startsWith("task_");
                     const subtaskBadge = isSubtask ? `<span class="subtask_tree_elbow text-muted me-1" title="${_t("Po-užduotis")}">↳</span>` : "";
@@ -1815,7 +1829,8 @@ export class GanntLTAction extends Component {
 
                     const anchorIcon = task.has_been_approved ? `<i class="fa fa-anchor text-info me-1" title="${_t("Planas užrakintas po patvirtinimo")}"></i>` : "";
                     const fireIcon = task.is_overdue_past ? `<span class="tree_fire_badge" title="${_t("Vėluoja: suplanuota pabaiga praeityje, bet darbas nebaigtas")}"><i class="fa fa-fire text-white"></i></span>` : "";
-                    return `${subtaskBadge}${fireIcon}${anchorIcon}<i class="${icon} me-1"${titleAttr}></i>${escapeHtml(task.text)}${extraIndicator}`;
+                    const infIcon = task.is_continuous ? `<span class="tree_continuous_badge" title="${_t("Tęstinė užduotis be termino")}">∞</span>` : "";
+                    return `${subtaskBadge}${fireIcon}${infIcon}${anchorIcon}<i class="${icon} me-1"${titleAttr}></i>${escapeHtml(task.text)}${extraIndicator}`;
                 },
             },
             {
@@ -1925,7 +1940,16 @@ export class GanntLTAction extends Component {
             // Durations are always shown in minutes / hours / days (never "0.1h"); minutes are rounded UP, min 1.
             const spanMin = Math.max(1, Math.ceil((effEnd.getTime() - effStart.getTime()) / 60000));
             const durationText = formatDurationMinutes(spanMin);
-            const workText = workHours > 0 ? formatDurationMinutes(Math.round(workHours * 60)) : "0 min";
+            const formatWorkHoursOnly = (hoursVal) => {
+                const totalMin = Math.round((Number(hoursVal) || 0) * 60);
+                if (totalMin <= 0) return "0 min";
+                const h = Math.floor(totalMin / 60);
+                const m = totalMin % 60;
+                if (h > 0 && m > 0) return `${h} val. ${m} min.`;
+                if (h > 0) return `${h} val.`;
+                return `${m} min.`;
+            };
+            const workText = formatWorkHoursOnly(workHours);
             const timerSec = Number(task.timer_total_seconds) || 0;
             const timerRowHtml = timerSec > 0
                 ? `<div class="tooltip_row"><span class="tooltip_label">Laikmatis:</span> <span class="tooltip_val">${formatDurationMinutes(Math.ceil(timerSec / 60))}</span></div>`
@@ -1946,7 +1970,10 @@ export class GanntLTAction extends Component {
                 const d = new Date(String(task.date_deadline).replace(/-/g, "/"));
                 if (!isNaN(d.getTime())) {
                     dlDate = d;
-                    deadlineHtml += `<div class="tooltip_row tooltip_deadline_row"><span class="tooltip_label">Terminas:</span> <span class="tooltip_val">${g.templates.tooltip_date_format(d)}</span></div>`;
+                    const sameAsPlannedEnd = effEnd && Math.abs(d.getTime() - effEnd.getTime()) < 60000;
+                    if (!task.is_po && !task.is_mo && !task.is_delivery && !sameAsPlannedEnd) {
+                        deadlineHtml += `<div class="tooltip_row tooltip_deadline_row"><span class="tooltip_label">Terminas:</span> <span class="tooltip_val">${g.templates.tooltip_date_format(d)}</span></div>`;
+                    }
                 }
             }
             if (task.has_deadline_delay) {
@@ -1957,17 +1984,6 @@ export class GanntLTAction extends Component {
                 const delayStr = delayMin > 0 ? `+${formatDurationMinutes(delayMin)}` : "+!";
                 const liveTag = task.delay_kind === "timer" ? " (vyksta)" : "";
                 deadlineHtml += `<div class="tooltip_row tooltip_delay_row"><span class="tooltip_label">Vėlavimas:</span> <span class="tooltip_val text-danger fw-bold">${delayStr}${liveTag}</span></div>`;
-
-                // Working days / hours inside the late window (planned end -> deadline), excluding weekends & holidays
-                let delayWorkDays = 0;
-                let delayWorkHours = 0;
-                if (effEnd && dlDate && dlDate > effEnd) {
-                    const delayCalc = calculateWorkingDaysAndHours(effEnd, dlDate, this.state.workingHours);
-                    delayWorkDays = delayCalc.workDays;
-                    delayWorkHours = delayCalc.workHours;
-                }
-                deadlineHtml += `<div class="tooltip_row tooltip_delay_row"><span class="tooltip_label">Vėlavimo d. dienos:</span> <span class="tooltip_val text-danger fw-bold">${delayWorkDays} d.</span></div>`;
-                deadlineHtml += `<div class="tooltip_row tooltip_delay_row"><span class="tooltip_label">Vėlavimo d. valandos:</span> <span class="tooltip_val text-danger fw-bold">${delayWorkHours > 0 ? formatDurationMinutes(Math.round(delayWorkHours * 60)) : "0 min"}</span></div>`;
             }
             if (task.has_early_finish && !task.has_deadline_delay && task.early_minutes > 0) {
                 if (task.actual_finish_date) {
@@ -1978,6 +1994,18 @@ export class GanntLTAction extends Component {
                 }
                 const earlyStr = `-${formatDurationMinutes(task.early_minutes)}`;
                 deadlineHtml += `<div class="tooltip_row tooltip_early_row"><span class="tooltip_label">Atlikta anksčiau:</span> <span class="tooltip_val text-success fw-bold">${earlyStr}</span></div>`;
+            }
+            if (task.is_overdue_past && !task.is_continuous && !task.is_done && task.delay_kind !== "timer") {
+                const todayRef = new Date();
+                if (this.state.zoomLevel < 60) {
+                    todayRef.setHours(12, 0, 0, 0);
+                }
+                const refEnd = (task.has_deadline_delay && dlDate && effEnd && dlDate > effEnd) ? dlDate : effEnd;
+                if (refEnd && todayRef > refEnd) {
+                    const overdueMin = Math.max(1, Math.ceil((todayRef.getTime() - refEnd.getTime()) / 60000));
+                    const overdueStr = `+${formatDurationMinutes(overdueMin)}`;
+                    deadlineHtml += `<div class="tooltip_row tooltip_delay_row"><span class="tooltip_label">Vėlavimas iki šiandien:</span> <span class="tooltip_val text-danger fw-bold"><i class="fa fa-exclamation-triangle me-1"></i>${overdueStr}</span></div>`;
+                }
             }
             const getStatusBadge = (t) => {
                 if (t.is_project) {
@@ -2104,7 +2132,8 @@ export class GanntLTAction extends Component {
                         <div class="tooltip_row"><span class="tooltip_label">Būsena:</span> <span class="tooltip_val">${task.is_done ? '<span class="text-success fw-bold">Gauta / Patvirtinta</span>' : '<span class="text-info fw-bold">Užsakyta / Vykdoma</span>'}</span></div>
                         <div class="tooltip_row"><span class="tooltip_label">Projektas:</span> <span class="tooltip_val">${escapeHtml(task.project_name || "-")}</span></div>
                         <div class="tooltip_row"><span class="tooltip_label">Užsakymo data:</span> <span class="tooltip_val">${startStr}</span></div>
-                        <div class="tooltip_row"><span class="tooltip_label">Pristatymo data:</span> <span class="tooltip_val">${endStr}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Planuotas pristatymas:</span> <span class="tooltip_val">${endStr}</span></div>
+                        ${deadlineHtml}
                         ${task.assignees ? `<div class="tooltip_row"><span class="tooltip_label">Pirkėjas:</span> <span class="tooltip_val">${escapeHtml(task.assignees)}</span></div>` : ""}
                     </div>
                 `;
@@ -2119,6 +2148,7 @@ export class GanntLTAction extends Component {
                         <div class="tooltip_row"><span class="tooltip_label">Projektas:</span> <span class="tooltip_val">${escapeHtml(task.project_name || "-")}</span></div>
                         <div class="tooltip_row"><span class="tooltip_label">Gamybos pradžia:</span> <span class="tooltip_val">${startStr}</span></div>
                         <div class="tooltip_row"><span class="tooltip_label">Gamybos pabaiga:</span> <span class="tooltip_val">${endStr}</span></div>
+                        ${deadlineHtml}
                         ${task.assignees ? `<div class="tooltip_row"><span class="tooltip_label">Atsakingas:</span> <span class="tooltip_val">${escapeHtml(task.assignees)}</span></div>` : ""}
                     </div>
                 `;
@@ -2132,6 +2162,8 @@ export class GanntLTAction extends Component {
                         <div class="tooltip_row"><span class="tooltip_label">Būsena:</span> <span class="tooltip_val">${task.is_done ? '<span class="text-success fw-bold">Pristatyta (Done)</span>' : '<span class="text-primary fw-bold">Suplanuota</span>'}</span></div>
                         <div class="tooltip_row"><span class="tooltip_label">Projektas:</span> <span class="tooltip_val">${escapeHtml(task.project_name || "-")}</span></div>
                         <div class="tooltip_row"><span class="tooltip_label">Planuota data:</span> <span class="tooltip_val">${startStr}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">Terminas:</span> <span class="tooltip_val">${endStr}</span></div>
+                        ${deadlineHtml}
                     </div>
                 `;
             }
@@ -2182,7 +2214,8 @@ export class GanntLTAction extends Component {
                     ${task.milestone_name ? `<div class="tooltip_row"><span class="tooltip_label">Gairė:</span> <span class="tooltip_val">${escapeHtml(task.milestone_name)}</span></div>` : ""}
                     ${hasTaskDates ? `
                         <div class="tooltip_row"><span class="tooltip_label">Pradžia:</span> <span class="tooltip_val">${startStr}</span></div>
-                        <div class="tooltip_row"><span class="tooltip_label">Pabaiga:</span> <span class="tooltip_val">${endStr}</span></div>
+                        <div class="tooltip_row"><span class="tooltip_label">${task.is_continuous ? "Iki šiandien:" : "Pabaiga:"}</span> <span class="tooltip_val">${endStr}</span></div>
+                        ${task.is_continuous ? `<div class="tooltip_row"><span class="tooltip_label">Terminas:</span> <span class="tooltip_val text-secondary fw-bold">∞ Tęstinis (be termino)</span></div>` : ""}
                         ${deadlineHtml}
                         <div class="tooltip_row"><span class="tooltip_label">Trukmė:</span> <span class="tooltip_val">${durationText}</span></div>
                         <div class="tooltip_row"><span class="tooltip_label">Darbo dienos:</span> <span class="tooltip_val"><b>${workDays} d.</b></span></div>
@@ -2226,6 +2259,7 @@ export class GanntLTAction extends Component {
 
             // Red tail: drawn right AFTER the bar, from the planned end up to the deadline (or live "now" for a running timer).
             let delayBarHtml = "";
+            let delayWidthPx = 0;
             if (task.has_deadline_delay) {
                 let diffMin = Number(task.delay_minutes) || 0;
                 const dlEnd = task.deadline_end
@@ -2240,7 +2274,7 @@ export class GanntLTAction extends Component {
 
                 if (diffMin > 0) {
                     const diffMs = diffMin * 60000;
-                    const pxPerDay = getZoomPxPerDay(this.state.zoomLevel, this.getTimelineVisibleWidth());
+                    const pxPerDay = (this._renderCache && this._renderCache.pxPerDay) || getZoomPxPerDay(this.state.zoomLevel, this.getTimelineVisibleWidth());
                     let widthPx = 0;
                     if (isExactTimeResolution(this.state.zoomLevel)) {
                         const pxPerHour = pxPerDay / 24.0;
@@ -2259,6 +2293,7 @@ export class GanntLTAction extends Component {
                         widthPx = Math.max(18, posDiff, Math.round(diffDays * pxPerDay));
                     }
 
+                    delayWidthPx = widthPx;
                     const delayText = `+${formatDurationMinutes(diffMin)}`;
                     const badgeText = widthPx >= 38
                         ? `<i class="fa fa-clock-o me-1"></i>${delayText}`
@@ -2290,7 +2325,9 @@ export class GanntLTAction extends Component {
                 return w;
             };
 
-            const barWidthPx = getBarWidthPx(start || task.start_date, end || task.end_date);
+            const barWidthPx = (typeof task._cachedBarWidthPx === "number")
+                ? task._cachedBarWidthPx
+                : getBarWidthPx(start || task.start_date, end || task.end_date);
             const hoursBadge = (task.allocated_hours && barWidthPx >= 110) ? ` <span class="bar_hours_badge">(${escapeHtml(task.allocated_hours)})</span>` : "";
 
             // Early finish tail ("- uodegėlė"): drawn inside the right part of the bar
@@ -2310,7 +2347,7 @@ export class GanntLTAction extends Component {
 
                 if (earlyMin > 0) {
                     const diffMs = earlyMin * 60000;
-                    const pxPerDay = getZoomPxPerDay(this.state.zoomLevel, this.getTimelineVisibleWidth());
+                    const pxPerDay = (this._renderCache && this._renderCache.pxPerDay) || getZoomPxPerDay(this.state.zoomLevel, this.getTimelineVisibleWidth());
                     const barEndRef = end || task.end_date;
                     let posDiff = 0;
                     if (actEnd && !isNaN(actEnd.getTime()) && barEndRef) {
@@ -2362,6 +2399,59 @@ export class GanntLTAction extends Component {
 
             const anchorHtml = task.has_been_approved ? `<i class="fa fa-anchor bar_anchor_approved" title="${_t("Planas užrakintas po patvirtinimo")}"></i>` : "";
 
+            let continuousTailHtml = "";
+            if (task.is_continuous && !task.has_deadline_delay) {
+                continuousTailHtml = `
+                    <div class="timeline_continuous_tail" title="${_t("Tęstinis projektas / užduotis be termino")}">
+                        <span>∞</span>
+                    </div>
+                `;
+            }
+
+            let overdueTailHtml = "";
+            if (task.is_overdue_past && !task.is_continuous && !task.is_done && task.delay_kind !== "timer") {
+                if (!this._renderCache) {
+                    const vw = this.getTimelineVisibleWidth();
+                    const ppd = getZoomPxPerDay(this.state.zoomLevel, vw);
+                    const tr = new Date();
+                    if (this.state.zoomLevel < 60) {
+                        tr.setHours(12, 0, 0, 0);
+                    }
+                    this._renderCache = {
+                        visWidth: vw,
+                        pxPerDay: ppd,
+                        todayRef: tr,
+                        todayPx: this.safePosFromDate(tr),
+                    };
+                }
+                const todayRef = this._renderCache.todayRef;
+                const todayPx = this._renderCache.todayPx;
+                const barEndRef = end || task.end_date;
+                const barEndPx = barEndRef ? this.safePosFromDate(barEndRef) : -1;
+                if (todayPx >= 0 && barEndPx >= 0) {
+                    const tailStartPx = barEndPx + delayWidthPx;
+                    const overdueWidthPx = Math.round(todayPx - tailStartPx);
+                    if (overdueWidthPx >= 4) {
+                        const dlRef = task.has_deadline_delay && task.deadline_end
+                            ? (task.deadline_end instanceof Date ? task.deadline_end : new Date(String(task.deadline_end).replace(/-/g, "/")))
+                            : (barEndRef instanceof Date ? barEndRef : new Date(String(barEndRef).replace(/-/g, "/")));
+                        const diffMin = dlRef && !isNaN(dlRef.getTime())
+                            ? Math.max(1, Math.ceil((todayRef.getTime() - dlRef.getTime()) / 60000))
+                            : 0;
+                        const lateLabel = diffMin > 0 ? `+${formatDurationMinutes(diffMin)}` : "";
+                        const badgeHtml = overdueWidthPx >= 52 && lateLabel
+                            ? `<span class="overdue_tail_badge"><i class="fa fa-exclamation-triangle me-1"></i>${lateLabel}</span>`
+                            : (overdueWidthPx >= 24 && lateLabel ? `<span class="overdue_tail_badge">${lateLabel}</span>` : "");
+                        const leftCss = delayWidthPx > 0 ? `calc(100% + ${delayWidthPx}px)` : "100%";
+                        overdueTailHtml = `
+                            <div class="timeline_overdue_tail" style="position: absolute; left: ${leftCss}; top: -1px; width: ${overdueWidthPx}px; height: calc(100% + 2px);" title="${_t("Vėluoja iki šiandien — nebaigta arba nepakeista pabaigos data")}">
+                                ${badgeHtml}
+                            </div>
+                        `;
+                    }
+                }
+            }
+
             const contentPaddingStyle = earlyWidthPx > 0 ? `style="padding-right: ${earlyWidthPx + 4}px !important;"` : "";
 
             if (barWidthPx < 24) {
@@ -2369,6 +2459,8 @@ export class GanntLTAction extends Component {
                     <span class="bar_content_wrapper bar_content_empty"></span>
                     ${earlyBarHtml}
                     ${delayBarHtml}
+                    ${overdueTailHtml}
+                    ${continuousTailHtml}
                 `;
             }
 
@@ -2379,6 +2471,8 @@ export class GanntLTAction extends Component {
                     </span>
                     ${earlyBarHtml}
                     ${delayBarHtml}
+                    ${overdueTailHtml}
+                    ${continuousTailHtml}
                 `;
             }
 
@@ -2389,6 +2483,8 @@ export class GanntLTAction extends Component {
                 </span>
                 ${earlyBarHtml}
                 ${delayBarHtml}
+                ${overdueTailHtml}
+                ${continuousTailHtml}
             `;
         };
 
@@ -2410,8 +2506,9 @@ export class GanntLTAction extends Component {
             } catch {
                 barWidthPx = 100;
             }
+            task._cachedBarWidthPx = barWidthPx;
             const sizeClass = barWidthPx < 24 ? " bar_ultra_compact" : (barWidthPx < 56 ? " bar_compact" : "");
-            const extraClass = (task.has_deadline_delay ? " has_deadline_delay" : "") + (task.has_early_finish ? " has_early_finish" : "") + sizeClass;
+            const extraClass = (task.has_deadline_delay ? " has_deadline_delay" : "") + (task.is_overdue_past && !task.is_continuous && !task.is_done && task.delay_kind !== "timer" ? " has_overdue_tail" : "") + (task.has_early_finish ? " has_early_finish" : "") + (task.is_continuous && !task.has_deadline_delay ? " has_continuous_tail" : "") + sizeClass;
             const state = task.state || (task.is_done ? "1_done" : "01_in_progress");
 
             if (task.is_project) {
@@ -2454,7 +2551,7 @@ export class GanntLTAction extends Component {
             }
 
             if (task.is_po) {
-                const poDone = task.is_done || state === "purchase" || state === "done";
+                const poDone = Boolean(task.is_done);
                 return "task_po readonly_bar" + (poDone ? " task_po_done" : "") + extraClass;
             }
 
@@ -2617,12 +2714,24 @@ export class GanntLTAction extends Component {
             this.eventIds = [];
         }
 
+        // Clear per-render cache before and after render so todayPx/visWidth are lazily computed on the active scale
+        this._renderCache = null;
+        this.eventIds.push(g.attachEvent("onBeforeGanttRender", () => {
+            this._renderCache = null;
+        }));
+
         // Render dynamic Today vertical line marker on render and scroll
-        this.eventIds.push(g.attachEvent("onGanttRender", () => this.renderTodayMarker()));
+        this.eventIds.push(g.attachEvent("onGanttRender", () => {
+            this._renderCache = null;
+            this.renderTodayMarker();
+        }));
         this.eventIds.push(g.attachEvent("onGanttScroll", (oldLeft, oldTop, left, top) => {
             this.hideTooltip();
             this.clearHoverHighlight();
             this.renderTodayMarker();
+            if (!this._isExpandingRange && !this._isZooming) {
+                this._scheduleSaveViewState();
+            }
 
             if (!this._isZooming && oldLeft !== undefined && left !== undefined && oldLeft !== left) {
                 this._zoomAnchorDate = null;
@@ -2658,6 +2767,54 @@ export class GanntLTAction extends Component {
             if (this._justDragged) {
                 return true;
             }
+            const isTreeToggle = e && e.target && e.target.closest && (
+                e.target.closest(".gantt_tree_icon.gantt_close") ||
+                e.target.closest(".gantt_tree_icon.gantt_open") ||
+                e.target.closest(".gantt_close") ||
+                e.target.closest(".gantt_open")
+            );
+            // Ctrl+Left-Click (or Cmd+Left-Click) on any row/bar opens the record in a new tab
+            if (
+                e &&
+                (e.ctrlKey || e.metaKey) &&
+                (!e.button || e.button === 0) &&
+                !isTreeToggle &&
+                id &&
+                g.isTaskExists(id)
+            ) {
+                const target = this._getRecordModelAndId(g.getTask(id));
+                if (target) {
+                    if (e.preventDefault) e.preventDefault();
+                    if (e.stopPropagation) e.stopPropagation();
+                    window.open(`/odoo/${target.resModel}/${target.resId}`, "_blank", "noopener");
+                    return false;
+                }
+            }
+            // Alt+Left-Click on any project (or item inside a project) filters the timeline to only that project
+            if (
+                e &&
+                e.altKey &&
+                (!e.button || e.button === 0) &&
+                !isTreeToggle &&
+                id &&
+                g.isTaskExists(id)
+            ) {
+                const clickedTask = g.getTask(id);
+                const targetProjId = clickedTask
+                    ? (clickedTask.is_project && clickedTask.odoo_id ? String(clickedTask.odoo_id) : (clickedTask.project_id ? String(clickedTask.project_id) : ""))
+                    : "";
+                if (targetProjId) {
+                    if (e.preventDefault) e.preventDefault();
+                    if (e.stopPropagation) e.stopPropagation();
+                    this.state.selectedProjectId = targetProjId;
+                    this._projectChanged = true;
+                    this.loadTimelineData().then(() => {
+                        this.navigateToday();
+                        this._scheduleSaveViewState();
+                    });
+                    return false;
+                }
+            }
             // Check if the click occurred in the left sidebar tree grid
             const isGridClick = e && e.target && e.target.closest && !!e.target.closest(".gantt_grid");
             if (!isGridClick) {
@@ -2667,12 +2824,6 @@ export class GanntLTAction extends Component {
 
             // User clicked the row in the left sidebar grid: fit to screen and center project/task (debounced to allow double-click)
             if (id && g.isTaskExists(id)) {
-                const isTreeToggle = e && e.target && e.target.closest && (
-                    e.target.closest(".gantt_tree_icon.gantt_close") ||
-                    e.target.closest(".gantt_tree_icon.gantt_open") ||
-                    e.target.closest(".gantt_close") ||
-                    e.target.closest(".gantt_open")
-                );
                 if (!isTreeToggle) {
                     this._clearTimeout(this._sidebarClickTimer);
                     this._sidebarClickTimer = this._setTimeout(() => {
@@ -2700,10 +2851,12 @@ export class GanntLTAction extends Component {
 
         this.eventIds.push(g.attachEvent("onTaskOpened", () => {
             this.clearHoverHighlight();
+            this._scheduleSaveViewState();
             return true;
         }));
         this.eventIds.push(g.attachEvent("onTaskClosed", () => {
             this.clearHoverHighlight();
+            this._scheduleSaveViewState();
             return true;
         }));
 
@@ -3864,8 +4017,8 @@ export class GanntLTAction extends Component {
                     e.preventDefault();
 
                     const now = Date.now();
-                    if (this._lastWheelTime && (now - this._lastWheelTime) < 70) {
-                        return; // Rate limit zoom steps during continuous wheel spin
+                    if (this._lastWheelTime && (now - this._lastWheelTime) < 28) {
+                        return; // Coalesce ultra-high-frequency trackpad bursts without feeling sluggish
                     }
                     this._lastWheelTime = now;
 
@@ -3873,12 +4026,8 @@ export class GanntLTAction extends Component {
                         ? (this.ganttElement.el.querySelector(".gantt_task") || this.ganttElement.el.querySelector(".gantt_data_area"))
                         : null;
 
-                    // If a continuous wheel gesture is active within 400ms, maintain anchor date and screen position
+                    // Keep the exact date under the cursor pinned horizontally throughout a wheel zoom gesture
                     if (!this._wheelAnchorDate || !this._wheelResetTimer) {
-                        const taskIdUnderMouse = g.locate ? g.locate(e) : null;
-                        if (taskIdUnderMouse && g.isTaskExists(taskIdUnderMouse)) {
-                            g.selectTask(taskIdUnderMouse);
-                        }
                         if (taskViewport && g.dateFromPos) {
                             const rect = taskViewport.getBoundingClientRect();
                             const relX = e.clientX - rect.left;
@@ -3903,15 +4052,16 @@ export class GanntLTAction extends Component {
                         this._wheelAnchorDate = null;
                         this._wheelFocalOffset = null;
                         this._wheelResetTimer = null;
-                    }, 400);
+                    }, 450);
 
                     const focalDate = this._wheelAnchorDate;
                     const focalOffset = this._wheelFocalOffset;
+                    const stepDelta = Math.abs(e.deltaY) < 40 ? 1 : 2;
 
                     if (e.deltaY < 0) {
-                        this.zoomIn(focalDate, focalOffset);
+                        this.zoomIn(focalDate, focalOffset, stepDelta);
                     } else if (e.deltaY > 0) {
-                        this.zoomOut(focalDate, focalOffset);
+                        this.zoomOut(focalDate, focalOffset, stepDelta);
                     }
                 }
             };
@@ -4097,9 +4247,9 @@ export class GanntLTAction extends Component {
         const pxPerHour = pxPerDay / 24.0;
         const pxPerMin = pxPerDay / 1440.0;
 
-        // Bounding box fit thresholds:
-        const canFitDays = this.state.zoomLevel >= 25 && pxPerDay >= 9; // At >= 25% zoom, Day numbers fit!
-        const canFitWeeks = this.state.zoomLevel >= 10 && (pxPerDay * 7) >= 10; // At >= 10% zoom, Week numbers fit!
+        // Bounding box fit thresholds aligned with zoomLevel tiers:
+        const canFitDays = this.state.zoomLevel >= 20;
+        const canFitWeeks = this.state.zoomLevel >= 10;
 
         // 1. Year scale: Metai (%Y, e.g. 2026)
         const yearScale = {
@@ -4134,6 +4284,12 @@ export class GanntLTAction extends Component {
             format: (date) => {
                 const monthNumber = date.getMonth() + 1;
                 const fullTitle = `${date.getFullYear()} m. ${LITHUANIAN_MONTHS[date.getMonth()]}`;
+                if (monthWidth >= 140) {
+                    return `<span title="${fullTitle}">${fullTitle}</span>`;
+                }
+                if (monthWidth >= 70) {
+                    return `<span title="${fullTitle}">${LITHUANIAN_MONTHS[date.getMonth()]}</span>`;
+                }
                 if (monthWidth >= 14) {
                     return `<span title="${fullTitle}">${monthNumber}</span>`;
                 }
@@ -4178,15 +4334,16 @@ export class GanntLTAction extends Component {
                 const d = date.getDate();
                 const hol = getLithuanianHoliday(date);
                 const wd = canFitWeekdays ? ` ${LITHUANIAN_WEEKDAYS_SHORT[date.getDay()]}` : "";
+                const monthPrefix = pxPerDay >= 240 ? `${LITHUANIAN_MONTHS_SHORT[date.getMonth()]} ` : "";
                 if (hol) {
-                    return `<span class="holiday_day_cell" title="${escapeHtml(hol)}">${d}${wd}</span>`;
+                    return `<span class="holiday_day_cell" title="${escapeHtml(hol)}">${monthPrefix}${d}${wd}</span>`;
                 }
                 const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
                 const fullDateTitle = `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(d)}`;
                 if (pxPerDay < 14) {
                     return `<span title="${fullDateTitle}" style="font-size: 9px;">${d}</span>`;
                 }
-                return `<span title="${fullDateTitle}">${d}${wd}</span>`;
+                return `<span title="${fullDateTitle}">${monthPrefix}${d}${wd}</span>`;
             },
             css: (date) => {
                 if (!canFitDays) return "day_scale_cell no_division_cell";
@@ -4211,13 +4368,15 @@ export class GanntLTAction extends Component {
             height: 22,
         };
 
-        // 6. Hour scale: dynamic 1h or 2h step based on available width
-        const canFitHours = this.state.zoomLevel >= 50 && (pxPerHour * 2) >= 12;
+        // 6. Hour scale: dynamic 1h / 2h / 3h step based on available width
+        const canFitHours = this.state.zoomLevel >= 50;
         let hourStep = 1;
-        if (this.state.zoomLevel >= 55 || pxPerHour >= 11) {
+        if (this.state.zoomLevel >= 56 || pxPerHour >= 11) {
             hourStep = 1;
-        } else if (canFitHours) {
+        } else if (canFitHours && (pxPerHour * 2) >= 11) {
             hourStep = 2;
+        } else if (canFitHours) {
+            hourStep = 3;
         }
         const hourColWidth = Math.max(14, Math.round(pxPerHour * hourStep));
 
@@ -4305,31 +4464,31 @@ export class GanntLTAction extends Component {
             height: 22,
         };
 
-        // Dynamic Scale Selection: strictly based on whether each time unit fits on screen!
+        // Sliding 3-row scale header (fixed 66px height across all zoom levels so rows never shift vertically)
         let scales = [yearScale, quarterScale, monthScale];
 
         if (canFitMinutes) {
-            // Minute timescale (60% - 100%): all 7 strips active [Year, Quarter, Month, Week, Day, Hour, Minute]
-            scales = [yearScale, quarterScale, monthScale, weekScale, dayScale, hourScale, minuteScale];
+            // Minute timescale (60% - 100%): [Day, Hour, Minute]
+            scales = [dayScale, hourScale, minuteScale];
             g.config.time_step = minStep === 1 ? 1 : (minStep || 5);
             g.config.min_column_width = customColWidth ? Math.max(10, customColWidth) : minuteColWidth;
         } else if (canFitHours) {
-            // Hourly timescale (50% - 55%): 6 strips active [Year, Quarter, Month, Week, Day, Hour]
-            scales = [yearScale, quarterScale, monthScale, weekScale, dayScale, hourScale];
+            // Hourly timescale (50% - 59%): [Month, Day, Hour]
+            scales = [monthScale, dayScale, hourScale];
             g.config.time_step = 15; // 15-minute precision in hourly view
             g.config.min_column_width = customColWidth ? Math.max(12, customColWidth) : hourColWidth;
         } else if (canFitDays) {
-            // Daily timescale (25% - 45%): 5 strips active [Year, Quarter, Month, Week, Day]
-            scales = [yearScale, quarterScale, monthScale, weekScale, dayScale];
+            // Daily timescale (25% - 49%): [Month, Week, Day]
+            scales = [monthScale, weekScale, dayScale];
             g.config.time_step = 1440;
             g.config.min_column_width = customColWidth ? Math.max(9, customColWidth) : Math.max(9, Math.round(pxPerDay));
         } else if (canFitWeeks) {
-            // Weekly timescale (10% - 20%): 4 strips active [Year, Quarter, Month, Week]
-            scales = [yearScale, quarterScale, monthScale, weekScale];
+            // Weekly timescale (10% - 24%): [Year, Month, Week]
+            scales = [yearScale, monthScale, weekScale];
             g.config.time_step = 1440;
             g.config.min_column_width = customColWidth ? Math.max(10, customColWidth) : Math.max(10, Math.round(pxPerDay * 7));
         } else {
-            // Macro monthly timescale (0% - 5%): 3 strips active [Year, Quarter, Month]
+            // Macro monthly timescale (0% - 9%): [Year, Quarter, Month]
             scales = [yearScale, quarterScale, monthScale];
             g.config.time_step = 1440;
             const defMonthColW = Math.max(14, Math.round(pxPerDay * 30.4375));
@@ -4340,8 +4499,7 @@ export class GanntLTAction extends Component {
         g.config.duration_unit = "minute";
         g.config.duration_step = 1;
         g.config.min_duration = 60 * 1000; // 1 minute (60,000 ms) minimum duration across all scales
-        // Dynamically size header height to exact active scales count * 22px
-        // Eliminates empty white gaps and fake stripes across all zoom levels!
+        // Fixed 3-row header height (66px) prevents vertical row jumping while zooming
         g.config.scale_height = scales.length * 22;
     }
 
@@ -4354,14 +4512,21 @@ export class GanntLTAction extends Component {
 
         try {
             const domain = customDomain || this.props.domain || [];
-            const sel = String(this.state.selectedProjectId || "0");
+            const sel = String(this.state.selectedProjectId || "active");
+            const isOnlyActive = sel === "active";
             const isOverdue = sel === "overdue";
             const isOnlyMo = sel === "only_mo";
-            const projNum = (!isOverdue && !isOnlyMo) ? (parseInt(sel, 10) || 0) : 0;
+            const isOnlyPo = sel === "only_po";
+            const isOnlyDelivery = sel === "only_delivery";
+            const isSpecialFilter = isOnlyActive || isOverdue || isOnlyMo || isOnlyPo || isOnlyDelivery;
+            const projNum = !isSpecialFilter ? (parseInt(sel, 10) || 0) : 0;
             const data = await this.orm.call("project.task", "get_all_in_one_timeline_data", [], {
-                project_id: isOverdue ? "overdue" : (isOnlyMo ? "only_mo" : projNum),
+                project_id: isSpecialFilter ? sel : projNum,
+                only_active: isOnlyActive,
                 only_overdue: isOverdue,
                 only_mo: isOnlyMo,
+                only_po: isOnlyPo,
+                only_delivery: isOnlyDelivery,
                 domain: domain,
                 model_name: this.props.resModel || "project.task",
             });
@@ -4369,7 +4534,9 @@ export class GanntLTAction extends Component {
 
             this.state.projects = data.projects || [];
             this.state.hasMrp = Boolean(data.has_mrp);
-            if (isOnlyMo && !this.state.hasMrp) {
+            this.state.hasPurchase = Boolean(data.has_purchase);
+            this.state.hasDelivery = Boolean(data.has_delivery);
+            if ((isOnlyMo && !this.state.hasMrp) || (isOnlyPo && !this.state.hasPurchase) || (isOnlyDelivery && !this.state.hasDelivery)) {
                 this.state.selectedProjectId = "0";
                 return await this.loadTimelineData(customDomain);
             }
@@ -4410,6 +4577,9 @@ export class GanntLTAction extends Component {
                 this._lastAddedParentId = null;
             }
 
+            if (!savedOpenStates && this._savedViewState && this._savedViewState.openStates) {
+                savedOpenStates = this._savedViewState.openStates;
+            }
             if (data.tasks) {
                 const zoomLevel = this.state.zoomLevel;
                 for (const t of data.tasks) {
@@ -4434,13 +4604,20 @@ export class GanntLTAction extends Component {
                 }
             }
 
-            this.gantt.clearAll();
-            this.gantt.parse({
-                data: data.tasks || [],
-                links: data.links || [],
-            });
-            this.ensureTimelineRange();
-            this.gantt.render();
+            const applyBatchLoad = () => {
+                this.gantt.clearAll();
+                this.gantt.parse({
+                    data: data.tasks || [],
+                    links: data.links || [],
+                });
+                this.ensureTimelineRange();
+            };
+            if (typeof this.gantt.batchUpdate === "function") {
+                this.gantt.batchUpdate(applyBatchLoad);
+            } else {
+                applyBatchLoad();
+                this.gantt.render();
+            }
 
             if (this._savedViewState) {
                 const saved = this._savedViewState;
@@ -4467,19 +4644,13 @@ export class GanntLTAction extends Component {
                 };
 
                 restoreViewport();
-                this._requestAnimationFrame(() => {
-                    restoreViewport();
-                    this._setTimeout(restoreViewport, 60);
-                });
+                this._requestAnimationFrame(restoreViewport);
             } else if (this._projectChanged) {
                 this._projectChanged = false;
                 this.navigateToday(true);
             } else if (!this._initialScrollDone) {
                 this._initialScrollDone = true;
                 this.navigateToday(true);
-                this._setTimeout(() => {
-                    this.navigateToday(true);
-                }, 60);
             } else if (anchorDate) {
                 const visibleWidth = this.getTimelineVisibleWidth();
                 const newPos = this.safePosFromDate(anchorDate);
@@ -4495,6 +4666,21 @@ export class GanntLTAction extends Component {
             const errMsg = err?.data?.message || err?.message || String(err);
             this.notification.add(_t("Nepavyko užkrauti laiko juostos duomenų: ") + errMsg, { type: "danger" });
         }
+    }
+
+    /**
+     * Resolve Odoo model and record ID for a Gantt row/bar item.
+     */
+    _getRecordModelAndId(task) {
+        if (!task || task.is_group || !task.odoo_id) {
+            return null;
+        }
+        if (task.is_po) return { resModel: "purchase.order", resId: task.odoo_id };
+        if (task.is_mo) return { resModel: "mrp.production", resId: task.odoo_id };
+        if (task.is_delivery) return { resModel: "stock.picking", resId: task.odoo_id };
+        if (task.is_project) return { resModel: "project.project", resId: task.odoo_id };
+        if (task.is_milestone) return { resModel: "project.milestone", resId: task.odoo_id };
+        return { resModel: "project.task", resId: task.odoo_id };
     }
 
     /**
@@ -4669,28 +4855,41 @@ export class GanntLTAction extends Component {
 
         const visibleWidth = this.getTimelineVisibleWidth();
         const pxPerDay = getZoomPxPerDay(this.state.zoomLevel, visibleWidth);
-        const canFitDays = this.state.zoomLevel >= 25 && pxPerDay >= 9;
-        const canFitHours = this.state.zoomLevel >= 50 && (pxPerDay / 24 * 2) >= 12;
+        const canFitDays = this.state.zoomLevel >= 20;
+        const canFitHours = this.state.zoomLevel >= 50;
 
         let startDate;
         let endDate;
 
-        if (this.state.zoomLevel >= 90) {
-            // Ultra-micro zoom (1-minute / 5-minute resolution): tight 1 day past, 2 days future buffer
-            startDate = new Date(effectiveMin.getFullYear(), effectiveMin.getMonth(), effectiveMin.getDate() - 1, 0, 0, 0);
-            endDate = new Date(effectiveMax.getFullYear(), effectiveMax.getMonth(), effectiveMax.getDate() + 2, 23, 59, 59);
+        if (this.state.zoomLevel >= 88) {
+            // Ultra-micro zoom (1-minute / 5-minute resolution): 2 days past, 4 days future buffer
+            startDate = new Date(effectiveMin.getFullYear(), effectiveMin.getMonth(), effectiveMin.getDate() - 2, 0, 0, 0);
+            endDate = new Date(effectiveMax.getFullYear(), effectiveMax.getMonth(), effectiveMax.getDate() + 4, 23, 59, 59);
+        } else if (this.state.zoomLevel >= 65) {
+            // High-precision minute zoom (15m / 30m): 7 days past, 14 days future buffer
+            startDate = new Date(effectiveMin.getFullYear(), effectiveMin.getMonth(), effectiveMin.getDate() - 7, 0, 0, 0);
+            endDate = new Date(effectiveMax.getFullYear(), effectiveMax.getMonth(), effectiveMax.getDate() + 14, 23, 59, 59);
         } else if (this.state.zoomLevel >= 50 || canFitHours) {
-            // Hourly / 15-minute zoom: 4 days past, 7 days future buffer
-            startDate = new Date(effectiveMin.getFullYear(), effectiveMin.getMonth(), effectiveMin.getDate() - 4, 0, 0, 0);
-            endDate = new Date(effectiveMax.getFullYear(), effectiveMax.getMonth(), effectiveMax.getDate() + 7, 23, 59, 59);
+            // Hourly zoom: 21 days past, 45 days future buffer (soft transition from daily scale)
+            startDate = new Date(effectiveMin.getFullYear(), effectiveMin.getMonth(), effectiveMin.getDate() - 21, 0, 0, 0);
+            endDate = new Date(effectiveMax.getFullYear(), effectiveMax.getMonth(), effectiveMax.getDate() + 45, 23, 59, 59);
         } else if (!canFitDays) {
-            // Macro multi-year zoom (0% - 20%): 5 years backward, 5 years forward strictly aligned to Jan 1
-            startDate = new Date(effectiveMin.getFullYear() - 5, 0, 1, 0, 0, 0);
-            endDate = new Date(effectiveMax.getFullYear() + 5, 11, 31, 23, 59, 59);
+            // Macro multi-year zoom (0% - 24%): 3 years backward, 3 years forward strictly aligned to Jan 1
+            startDate = new Date(effectiveMin.getFullYear() - 3, 0, 1, 0, 0, 0);
+            endDate = new Date(effectiveMax.getFullYear() + 3, 11, 31, 23, 59, 59);
         } else {
-            // Detailed daily zoom (25% - 45%): 1 year backward, 2 years forward strictly aligned to Jan 1
+            // Detailed daily zoom (25% - 49%): 1 year backward, 2 years forward strictly aligned to Jan 1
             startDate = new Date(effectiveMin.getFullYear() - 1, 0, 1, 0, 0, 0);
             endDate = new Date(effectiveMax.getFullYear() + 2, 11, 31, 23, 59, 59);
+        }
+
+        // Ensure enough left buffer before Today so navigateToday() can center Today horizontally
+        if (!isHighZoom || distFromToday <= 21 * 86400000) {
+            const halfViewDays = Math.min(365, Math.max(1, Math.ceil((visibleWidth * 0.55) / Math.max(0.25, pxPerDay))));
+            const minCenteredStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - halfViewDays, 0, 0, 0);
+            if (minCenteredStart < startDate) {
+                startDate = minCenteredStart;
+            }
         }
 
         g.config.start_date = startDate;
@@ -4711,7 +4910,7 @@ export class GanntLTAction extends Component {
             const newStart = new Date(oldStart);
             const visibleWidth = this.getTimelineVisibleWidth();
             const pxPerDay = getZoomPxPerDay(this.state.zoomLevel, visibleWidth);
-            const canFitDays = this.state.zoomLevel >= 25 && pxPerDay >= 9;
+            const canFitDays = this.state.zoomLevel >= 20;
             if (pxPerDay >= 350) {
                 const stepDays = pxPerDay >= 2000 ? 1 : 3;
                 newStart.setDate(newStart.getDate() - stepDays);
@@ -4749,7 +4948,7 @@ export class GanntLTAction extends Component {
             const newEnd = new Date(oldEnd);
             const visibleWidth = this.getTimelineVisibleWidth();
             const pxPerDay = getZoomPxPerDay(this.state.zoomLevel, visibleWidth);
-            const canFitDays = this.state.zoomLevel >= 25 && pxPerDay >= 9;
+            const canFitDays = this.state.zoomLevel >= 20;
             if (pxPerDay >= 350) {
                 const stepDays = pxPerDay >= 2000 ? 1 : 3;
                 newEnd.setDate(newEnd.getDate() + stepDays);
@@ -4863,21 +5062,30 @@ export class GanntLTAction extends Component {
         this.state.selectedProjectId = val;
         this._projectChanged = true;
         await this.loadTimelineData();
-        if (val === "overdue" || val === "only_mo") {
+        if (val === "overdue" || val === "only_mo" || val === "only_po" || val === "only_delivery") {
             this.navigateToday();
         }
+        this._scheduleSaveViewState();
     }
 
-    zoomIn(focalDate = null, focalOffset = null) {
+    zoomIn(focalDate = null, focalOffset = null, stepSize = 5) {
         const validFocalDate = (focalDate instanceof Date && !isNaN(focalDate.getTime())) ? focalDate : null;
-        const nextStep = ZOOM_STEPS.find((step) => step > this.state.zoomLevel);
-        this.setZoom(nextStep !== undefined ? nextStep : ZOOM_STEPS[ZOOM_STEPS.length - 1], validFocalDate, null, null, focalOffset);
+        const step = Math.max(1, Number(stepSize) || 5);
+        const cur = Number(this.state.zoomLevel) || 0;
+        const nextLevel = Math.min(100, step === 5 ? (Math.floor(cur / 5) * 5 + 5) : (cur + step));
+        this.setZoom(nextLevel, validFocalDate, null, null, focalOffset);
     }
 
-    zoomOut(focalDate = null, focalOffset = null) {
+    zoomOut(focalDate = null, focalOffset = null, stepSize = 5) {
         const validFocalDate = (focalDate instanceof Date && !isNaN(focalDate.getTime())) ? focalDate : null;
-        const nextStep = [...ZOOM_STEPS].reverse().find((step) => step < this.state.zoomLevel);
-        this.setZoom(nextStep !== undefined ? nextStep : ZOOM_STEPS[0], validFocalDate, null, null, focalOffset);
+        const step = Math.max(1, Number(stepSize) || 5);
+        const cur = Number(this.state.zoomLevel) || 0;
+        const prevLevel = Math.max(0, step === 5 ? (Math.ceil(cur / 5) * 5 - 5) : (cur - step));
+        this.setZoom(prevLevel, validFocalDate, null, null, focalOffset);
+    }
+
+    zoomToDays() {
+        this.setZoom(20);
     }
 
     setZoom(level, customFocalDate = null, customScrollY = null, itemSpan = null, customFocalOffset = null) {
@@ -5041,35 +5249,41 @@ export class GanntLTAction extends Component {
                 focalOffset = Math.round(visibleWidth / 2);
             }
 
-            // 4. Apply the new zoom level and reconfigure scale & range directly
+            // 4. Apply the new zoom level and reconfigure scale & range in a single batch render
+            this._renderCache = null;
             this.state.zoomLevel = level;
-            this.applyScaleConfig();
+            const applyZoomBatch = () => {
+                this.applyScaleConfig();
 
-            // Seamless transition of task visual grid coordinates across all zoom levels
-            if (g.eachTask) {
-                g.eachTask((t) => {
-                    if (t.work_start_date && t.work_end_date) {
-                        const { gridStart, gridEnd } = workDatesToVisualGrid(t.work_start_date, t.work_end_date, level);
-                        t.start_date = gridStart;
-                        t.end_date = gridEnd;
-                        if (t._established_work_start && t._established_work_end) {
-                            const estGrid = workDatesToVisualGrid(t._established_work_start, t._established_work_end, level);
-                            t._established_start = estGrid.gridStart;
-                            t._established_end = estGrid.gridEnd;
-                        } else {
-                            t._established_start = new Date(gridStart);
-                            t._established_end = new Date(gridEnd);
+                if (g.eachTask) {
+                    g.eachTask((t) => {
+                        if (t.work_start_date && t.work_end_date) {
+                            const { gridStart, gridEnd } = workDatesToVisualGrid(t.work_start_date, t.work_end_date, level);
+                            t.start_date = gridStart;
+                            t.end_date = gridEnd;
+                            if (t._established_work_start && t._established_work_end) {
+                                const estGrid = workDatesToVisualGrid(t._established_work_start, t._established_work_end, level);
+                                t._established_start = estGrid.gridStart;
+                                t._established_end = estGrid.gridEnd;
+                            } else {
+                                t._established_start = new Date(gridStart);
+                                t._established_end = new Date(gridEnd);
+                            }
                         }
-                        g.updateTask(t.id);
-                    }
-                });
-            }
+                    });
+                }
 
-            this.ensureTimelineRange(
-                (itemSpan && itemSpan.minStart) ? itemSpan.minStart : focalDate,
-                (itemSpan && itemSpan.maxEnd) ? itemSpan.maxEnd : focalDate
-            );
-            g.render();
+                this.ensureTimelineRange(
+                    (itemSpan && itemSpan.minStart) ? itemSpan.minStart : focalDate,
+                    (itemSpan && itemSpan.maxEnd) ? itemSpan.maxEnd : focalDate
+                );
+            };
+            if (typeof g.batchUpdate === "function") {
+                g.batchUpdate(applyZoomBatch);
+            } else {
+                applyZoomBatch();
+                g.render();
+            }
 
             // 5. Keep the viewport anchored on focalDate at focalOffset without jumping
             const applyScroll = () => {
@@ -5117,6 +5331,7 @@ export class GanntLTAction extends Component {
             this._requestAnimationFrame(() => {
                 applyScroll();
                 this._isZooming = false;
+                this._scheduleSaveViewState();
             });
         } catch (err) {
             this._isZooming = false;
@@ -5164,22 +5379,22 @@ export class GanntLTAction extends Component {
             this._zoomResetTimer = null;
         }
 
-        // Always ensure today is well within the timeline range with sufficient margin to view
+        // Always ensure today is well within the timeline range with sufficient left-side margin to center
+        const curWidth = this.getTimelineVisibleWidth();
         let todayPx = this.safePosFromDate(today);
-        if (todayPx < 80) {
+        if (todayPx < Math.round(curWidth / 2)) {
             this.ensureTimelineRange(today, today);
             g.render();
         }
 
-        const scrollAndAlignLeft = () => {
+        const scrollAndCenterToday = () => {
             this.renderTodayMarker();
             const curVisWidth = this.getTimelineVisibleWidth();
             const curTodayPx = this.safePosFromDate(today);
 
             if (curTodayPx >= 0 && g.scrollTo) {
-                // Position Today marker on the left side (~80px margin) so the user sees Today on the left and future timeline on the right
-                const leftMargin = Math.min(80, Math.max(40, Math.round(curVisWidth * 0.08)));
-                const targetX = Math.max(0, Math.round(curTodayPx - leftMargin));
+                // Center Today marker horizontally so both past/overdue and upcoming work are visible
+                const targetX = Math.max(0, Math.round(curTodayPx - curVisWidth / 2));
                 const scrollState = g.getScrollState ? g.getScrollState() : { y: 0 };
                 const targetY = (resetVerticalScroll === true) ? 0 : scrollState.y;
                 g.scrollTo(targetX, targetY);
@@ -5188,10 +5403,13 @@ export class GanntLTAction extends Component {
             }
         };
 
-        scrollAndAlignLeft();
+        scrollAndCenterToday();
         this._requestAnimationFrame(() => {
-            scrollAndAlignLeft();
-            this._setTimeout(scrollAndAlignLeft, 50);
+            scrollAndCenterToday();
+            this._setTimeout(() => {
+                scrollAndCenterToday();
+                this._scheduleSaveViewState();
+            }, 50);
         });
     }
 
@@ -5246,6 +5464,7 @@ export class GanntLTAction extends Component {
         } finally {
             this._setTimeout(() => {
                 this._isZooming = false;
+                this.saveViewState();
             }, 80);
         }
     }
@@ -5257,6 +5476,7 @@ export class GanntLTAction extends Component {
                 task.open = true;
             });
             this.gantt.render();
+            this._scheduleSaveViewState();
         }
     }
 
@@ -5267,6 +5487,7 @@ export class GanntLTAction extends Component {
                 task.open = false;
             });
             this.gantt.render();
+            this._scheduleSaveViewState();
         }
     }
 
@@ -5371,13 +5592,17 @@ export class GanntLTAction extends Component {
      * Export to Excel (.xlsx) with high-fidelity GanntLT formatting
      */
     async exportToExcel() {
-        const sel = String(this.state.selectedProjectId || "0");
+        const sel = String(this.state.selectedProjectId || "active");
+        const isOnlyActive = sel === "active";
         const isOverdue = sel === "overdue";
         const isOnlyMo = sel === "only_mo";
-        const projectId = (isOverdue || isOnlyMo) ? 0 : (parseInt(sel, 10) || 0);
-        if (!isOverdue && !isOnlyMo && !projectId && this.state.projects && this.state.projects.length > 1) {
+        const isOnlyPo = sel === "only_po";
+        const isOnlyDelivery = sel === "only_delivery";
+        const isSpecialFilter = isOnlyActive || isOverdue || isOnlyMo || isOnlyPo || isOnlyDelivery;
+        const projectId = isSpecialFilter ? 0 : (parseInt(sel, 10) || 0);
+        if (!isSpecialFilter && !projectId && this.state.projects && this.state.projects.length > 1) {
             this.notification.add(
-                _t("Pasirinkite konkretų projektą arba filtrą („Vėluojantys projektai“ / „Visi gamybos užsakymai“), kad eksportuotumėte tvarkaraštį."),
+                _t("Pasirinkite konkretų projektą arba filtrą („Visi aktyvūs projektai“ / „Vėluojantys projektai“ / „Gamyba“ / „Pirkimai“ / „Pristatymai“), kad eksportuotumėte tvarkaraštį."),
                 { type: "warning" }
             );
             return;
@@ -5389,13 +5614,19 @@ export class GanntLTAction extends Component {
             await download({
                 url: "/gannt_lt/export_excel",
                 data: {
-                    project_id: (isOverdue || isOnlyMo) ? "" : projectId,
+                    project_id: isSpecialFilter ? "" : projectId,
+                    only_active: isOnlyActive,
                     only_overdue: isOverdue,
                     only_mo: isOnlyMo,
+                    only_po: isOnlyPo,
+                    only_delivery: isOnlyDelivery,
                     data: JSON.stringify({
-                        project_id: (isOverdue || isOnlyMo) ? null : projectId,
+                        project_id: isSpecialFilter ? null : projectId,
+                        only_active: isOnlyActive,
                         only_overdue: isOverdue,
                         only_mo: isOnlyMo,
+                        only_po: isOnlyPo,
+                        only_delivery: isOnlyDelivery,
                         domain: domain,
                     }),
                 },

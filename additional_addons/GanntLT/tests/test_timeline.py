@@ -1851,6 +1851,331 @@ class TestGanntLTTimeline(TransactionCase):
         )
         self.env.invalidate_all()
 
+    def test_31_project_completion_deadline_and_early_finish(self):
+        """Completing a project late adds red delay tail; completing early adds green early tail; reopening clears auto fields."""
+        today = fields.Date.context_today(self.project)
+        Project = self.env["project.project"]
+        Task = self.env["project.task"]
+        Stage = self.env["project.project.stage"]
+        Update = self.env["project.update"]
+
+        stage_in_prog = Stage.create({"name": "In Progress Test", "fold": False})
+        stage_done = Stage.create({"name": "Done Test", "fold": True})
+
+        def mark_done(proj):
+            Update.create({"name": "Done Update", "project_id": proj.id, "status": "done"})
+
+        def mark_reopen(proj):
+            Update.create({"name": "Reopen Update", "project_id": proj.id, "status": "on_track"})
+
+        # 1. Late project completion via project.update(status='done') (planned end in the past, tasks finished on time)
+        p_late = Project.create({
+            "name": "Proj Late Complete",
+            "date_start": today - timedelta(days=20),
+            "date": today - timedelta(days=5),
+        })
+        Task.create({
+            "name": "On Time Task",
+            "project_id": p_late.id,
+            "planned_date_start": datetime.combine(today - timedelta(days=15), datetime.min.time()) + timedelta(hours=8),
+            "planned_date_end": datetime.combine(today - timedelta(days=10), datetime.min.time()) + timedelta(hours=17),
+            "state": "1_done",
+        })
+        mark_done(p_late)
+        self.assertEqual(p_late.actual_finish_date, today)
+        self.assertEqual(p_late.date_deadline, today)
+        self.assertTrue(p_late.deadline_is_auto)
+        tl_late = Task.get_all_in_one_timeline_data(project_id=p_late.id)
+        p_row_late = next(r for r in tl_late["tasks"] if r["id"] == f"proj_{p_late.id}")
+        self.assertTrue(p_row_late["has_deadline_delay"])
+        self.assertFalse(p_row_late["has_early_finish"])
+
+        # Reopening clears actual_finish_date and auto deadline
+        mark_reopen(p_late)
+        self.assertFalse(p_late.actual_finish_date)
+        self.assertFalse(p_late.date_deadline)
+        self.assertFalse(p_late.deadline_is_auto)
+
+        # 2. Early project completion via closed stage_id (planned end in the future, no delayed tasks)
+        p_early = Project.create({
+            "name": "Proj Early Complete",
+            "date_start": today - timedelta(days=10),
+            "date": today + timedelta(days=7),
+            "stage_id": stage_in_prog.id,
+        })
+        p_early.write({"stage_id": stage_done.id})
+        self.assertEqual(p_early.actual_finish_date, today)
+        self.assertFalse(p_early.date_deadline)
+        tl_early = Task.get_all_in_one_timeline_data(project_id=p_early.id)
+        p_row_early = next(r for r in tl_early["tasks"] if r["id"] == f"proj_{p_early.id}")
+        self.assertFalse(p_row_early["has_deadline_delay"])
+        self.assertTrue(p_row_early["has_early_finish"])
+        self.assertGreater(p_row_early["early_days"], 0)
+
+        # 3. Same-day project completion (today == date -> neither late nor early)
+        p_exact = Project.create({
+            "name": "Proj Exact Day Complete",
+            "date_start": today - timedelta(days=5),
+            "date": today,
+        })
+        mark_done(p_exact)
+        tl_exact = Task.get_all_in_one_timeline_data(project_id=p_exact.id)
+        p_row_exact = next(r for r in tl_exact["tasks"] if r["id"] == f"proj_{p_exact.id}")
+        self.assertFalse(p_row_exact["has_deadline_delay"])
+        self.assertFalse(p_row_exact["has_early_finish"])
+
+        # 4. Lateness dominance: early project completion + delayed task -> delay dominates!
+        p_dom = Project.create({
+            "name": "Proj Delay Dominance",
+            "date_start": today - timedelta(days=10),
+            "date": today + timedelta(days=5),
+        })
+        Task.create({
+            "name": "Delayed Child Task",
+            "project_id": p_dom.id,
+            "planned_date_start": datetime.combine(today - timedelta(days=8), datetime.min.time()) + timedelta(hours=8),
+            "planned_date_end": datetime.combine(today - timedelta(days=2), datetime.min.time()) + timedelta(hours=17),
+            "date_deadline": datetime.combine(today + timedelta(days=10), datetime.min.time()) + timedelta(hours=17),
+            "state": "1_done",
+        })
+        mark_done(p_dom)
+        tl_dom = Task.get_all_in_one_timeline_data(project_id=p_dom.id)
+        p_row_dom = next(r for r in tl_dom["tasks"] if r["id"] == f"proj_{p_dom.id}")
+        self.assertTrue(p_row_dom["has_deadline_delay"])
+        self.assertFalse(p_row_dom["has_early_finish"])
+
+        # 5. Manual deadline preserved on reopen
+        manual_dl = today + timedelta(days=20)
+        p_man = Project.create({
+            "name": "Proj Manual Deadline",
+            "date_start": today - timedelta(days=10),
+            "date": today + timedelta(days=5),
+            "date_deadline": manual_dl,
+        })
+        mark_done(p_man)
+        mark_reopen(p_man)
+        self.assertEqual(p_man.date_deadline, manual_dl)
+        self.assertFalse(p_man.actual_finish_date)
+
+    def test_32_editor_only_deadlines_and_continuous_tail(self):
+        """Only Can Edit can edit deadlines/dates; completed projects lock dates; open-ended items extend to Today as continuous."""
+        today = fields.Date.context_today(self.project)
+        Project = self.env["project.project"]
+        Task = self.env["project.task"]
+        Update = self.env["project.update"]
+
+        worker_user = self._make_user("dl_worker", ["base.group_user", "project.group_project_manager", "GanntLT.group_gannt_lt_worker"])
+        editor_user = self._make_user("dl_editor", ["base.group_user", "project.group_project_manager", "GanntLT.group_gannt_lt_manager"])
+
+        # 1. Open-ended continuous project & task (no end date, no deadline, created in past)
+        p_cont = Project.with_user(editor_user).create({
+            "name": "Continuous 2026 Project",
+            "date_start": today - timedelta(days=60),
+        })
+        t_cont = Task.with_user(editor_user).create({
+            "name": "Continuous 2026 Task",
+            "project_id": p_cont.id,
+            "planned_date_start": datetime.combine(today - timedelta(days=45), datetime.min.time()) + timedelta(hours=8),
+        })
+
+        # Non-editor (Can Track Time + Project Manager) cannot edit deadlines or dates directly
+        with self.assertRaises(AccessError):
+            t_cont.with_user(worker_user).write({"date_deadline": datetime.combine(today + timedelta(days=5), datetime.min.time())})
+        with self.assertRaises(AccessError):
+            p_cont.with_user(worker_user).write({"date_deadline": today + timedelta(days=5)})
+        with self.assertRaises(AccessError):
+            p_cont.with_user(worker_user).write({"date": today + timedelta(days=5)})
+        self.assertFalse(t_cont.with_user(worker_user).can_edit_gannt_dates)
+        self.assertTrue(t_cont.with_user(editor_user).can_edit_gannt_dates)
+
+        # Continuous timeline bars extend up to today without false overdue flags
+        tl_cont = Task.with_user(worker_user).get_all_in_one_timeline_data(project_id=p_cont.id)
+        p_row = next(r for r in tl_cont["tasks"] if r["id"] == f"proj_{p_cont.id}")
+        t_row = next(r for r in tl_cont["tasks"] if r["id"] == f"task_{t_cont.id}")
+        self.assertTrue(p_row["is_continuous"])
+        self.assertFalse(p_row["is_overdue_past"])
+        self.assertGreaterEqual(p_row["end_date"][:10], today.strftime("%Y-%m-%d"))
+        self.assertTrue(t_row["is_continuous"])
+        self.assertFalse(t_row["is_overdue_past"])
+        self.assertGreaterEqual(t_row["end_date"][:10], today.strftime("%Y-%m-%d"))
+
+        # Adding a planned end date converts a previously continuous project back to a fixed-schedule project
+        p_cont.with_user(editor_user).write({"date": today + timedelta(days=10)})
+        tl_fixed_fut = Task.with_user(editor_user).get_all_in_one_timeline_data(project_id=p_cont.id)
+        p_row_fut = next(r for r in tl_fixed_fut["tasks"] if r["id"] == f"proj_{p_cont.id}")
+        self.assertFalse(p_row_fut["is_continuous"])
+        self.assertFalse(p_row_fut["is_overdue_past"])
+
+        p_cont.with_user(editor_user).write({"date": today - timedelta(days=5)})
+        tl_fixed_past = Task.with_user(editor_user).get_all_in_one_timeline_data(project_id=p_cont.id)
+        p_row_past = next(r for r in tl_fixed_past["tasks"] if r["id"] == f"proj_{p_cont.id}")
+        self.assertFalse(p_row_past["is_continuous"])
+        self.assertTrue(p_row_past["is_overdue_past"])
+
+        # Worker CAN finish task via state='1_done' (Atlikta): saves end date, keeps start date, stops being continuous
+        orig_t_start = t_cont.planned_date_start
+        t_cont.with_user(worker_user).write({"state": "1_done"})
+        self.assertEqual(t_cont.state, "1_done")
+        self.assertTrue(t_cont.has_been_approved)
+        self.assertEqual(t_cont.planned_date_start, orig_t_start)
+        self.assertTrue(t_cont.planned_date_end)
+        self.assertTrue(t_cont.actual_finish_date)
+        tl_after_task_done = Task.with_user(worker_user).get_all_in_one_timeline_data(project_id=p_cont.id)
+        t_row_done = next(r for r in tl_after_task_done["tasks"] if r["id"] == f"task_{t_cont.id}")
+        self.assertFalse(t_row_done["is_continuous"])
+        self.assertTrue(t_row_done["is_done"])
+
+        # Infinite project marked Complete saves date=today and stops being continuous
+        p_inf_done = Project.with_user(editor_user).create({
+            "name": "Infinite To Complete Project",
+            "date_start": today - timedelta(days=30),
+        })
+        Update.create({"name": "Complete Infinite", "project_id": p_inf_done.id, "status": "done"})
+        self.assertEqual(p_inf_done.date, today)
+        self.assertEqual(p_inf_done.actual_finish_date, today)
+        tl_inf_done = Task.with_user(editor_user).get_all_in_one_timeline_data(project_id=p_inf_done.id)
+        p_row_inf_done = next(r for r in tl_inf_done["tasks"] if r["id"] == f"proj_{p_inf_done.id}")
+        self.assertFalse(p_row_inf_done["is_continuous"])
+        self.assertTrue(p_row_inf_done["is_done"])
+
+        # Completed project locks dates against reversal even for Can Edit
+        p_done = Project.with_user(editor_user).create({
+            "name": "Locked Done Project",
+            "date_start": today - timedelta(days=20),
+            "date": today - timedelta(days=5),
+        })
+        Update.create({"name": "Complete", "project_id": p_done.id, "status": "done"})
+        self.assertTrue(p_done.has_been_approved)
+        with self.assertRaises(ValidationError):
+            p_done.with_user(editor_user).write({"date_start": today - timedelta(days=10)})
+        with self.assertRaises(ValidationError):
+            p_done.with_user(editor_user).write({"date": today - timedelta(days=10)})
+        with self.assertRaises(ValidationError):
+            p_done.with_user(editor_user).write({"date_deadline": False})
+
+    def test_33_overdue_on_hold_vs_on_track(self):
+        """Projects on_track past planned date stay overdue; on_hold projects are paused (not overdue)."""
+        today = fields.Date.today()
+        past_start = today - timedelta(days=20)
+        past_end = today - timedelta(days=5)
+        Project = self.env["project.project"]
+        Task = self.env["project.task"]
+
+        proj = Project.create({
+            "name": "On Track Past Due Project",
+            "date_start": past_start,
+            "date": past_end,
+            "last_update_status": "on_track",
+        })
+        Task.create({
+            "name": "Incomplete Past Task",
+            "project_id": proj.id,
+            "planned_date_start": fields.Datetime.to_datetime(past_start),
+            "planned_date_end": fields.Datetime.to_datetime(past_end),
+            "state": "01_in_progress",
+        })
+
+        # 1. on_track past planned date -> MUST be overdue (warn PM with faint red tail)
+        data1 = Task.get_all_in_one_timeline_data(project_id=proj.id)
+        row1 = next(r for r in data1["tasks"] if r["id"] == f"proj_{proj.id}")
+        self.assertTrue(row1["is_overdue_past"])
+        self.assertFalse(row1["is_done"])
+
+        overdue1 = Task.get_all_in_one_timeline_data(only_overdue=True)
+        self.assertIn(f"proj_{proj.id}", {r["id"] for r in overdue1["tasks"]})
+
+        # 2. Put project on_hold -> NOT overdue while paused
+        proj.write({"last_update_status": "on_hold"})
+        data2 = Task.get_all_in_one_timeline_data(project_id=proj.id)
+        row2 = next(r for r in data2["tasks"] if r["id"] == f"proj_{proj.id}")
+        self.assertFalse(row2["is_overdue_past"])
+
+        overdue2 = Task.get_all_in_one_timeline_data(only_overdue=True)
+        self.assertNotIn(f"proj_{proj.id}", {r["id"] for r in overdue2["tasks"]})
+
+        # 3. Resume to on_track -> overdue again
+        proj.write({"last_update_status": "on_track"})
+        data3 = Task.get_all_in_one_timeline_data(project_id=proj.id)
+        row3 = next(r for r in data3["tasks"] if r["id"] == f"proj_{proj.id}")
+        self.assertTrue(row3["is_overdue_past"])
+
+        # 4. Complete project -> no longer overdue_past, becomes done with solid delay tail
+        upd = self.env["project.update"].create({
+            "name": "Done late",
+            "project_id": proj.id,
+            "status": "done",
+        })
+        data4 = Task.get_all_in_one_timeline_data(project_id=proj.id)
+        row4 = next(r for r in data4["tasks"] if r["id"] == f"proj_{proj.id}")
+        self.assertFalse(row4["is_overdue_past"])
+        self.assertTrue(row4["is_done"])
+        self.assertTrue(row4["has_deadline_delay"])
+
+    def test_34_milestone_reached_late_and_early_tail(self):
+        """Marking an overdue milestone reached converts it to a solid red delay tail; early reached shows early finish."""
+        today = fields.Date.today()
+        past_start = today - timedelta(days=20)
+        past_end = today - timedelta(days=5)
+        future_start = today + timedelta(days=2)
+        future_end = today + timedelta(days=10)
+        Project = self.env["project.project"]
+        Task = self.env["project.task"]
+        Milestone = self.env["project.milestone"]
+
+        proj = Project.create({
+            "name": "Milestone Tail Project",
+            "date_start": past_start,
+            "date": future_end,
+            "allow_milestones": True,
+        })
+        m_late = Milestone.create({
+            "name": "Late Milestone",
+            "project_id": proj.id,
+            "date_start": past_start,
+            "planned_date_end": past_end,
+            "deadline": past_end,
+        })
+        m_early = Milestone.create({
+            "name": "Early Milestone",
+            "project_id": proj.id,
+            "date_start": future_start,
+            "planned_date_end": future_end,
+            "deadline": future_end,
+        })
+
+        # Before reaching: m_late is overdue_past
+        d_before = Task.get_all_in_one_timeline_data(project_id=proj.id)
+        r_late_before = next(r for r in d_before["tasks"] if r["id"] == f"milestone_{m_late.id}")
+        self.assertTrue(r_late_before["is_overdue_past"])
+        self.assertFalse(r_late_before["has_deadline_delay"])
+
+        # Mark both reached
+        m_late.toggle_is_reached(True)
+        m_early.toggle_is_reached(True)
+        self.assertEqual(m_late.deadline, today)
+        self.assertEqual(m_late.planned_date_end, past_end)
+
+        d_after = Task.get_all_in_one_timeline_data(project_id=proj.id)
+        r_late_after = next(r for r in d_after["tasks"] if r["id"] == f"milestone_{m_late.id}")
+        self.assertFalse(r_late_after["is_overdue_past"])
+        self.assertTrue(r_late_after["is_done"])
+        self.assertTrue(r_late_after["has_deadline_delay"])
+        self.assertGreater(r_late_after["delay_days"], 0)
+
+        r_early_after = next(r for r in d_after["tasks"] if r["id"] == f"milestone_{m_early.id}")
+        self.assertTrue(r_early_after["is_done"])
+        self.assertFalse(r_early_after["has_deadline_delay"])
+        self.assertTrue(r_early_after["has_early_finish"])
+        self.assertGreater(r_early_after["early_days"], 0)
+
+        # Un-reach m_late -> restores deadline back to planned_date_end and reverts to overdue_past
+        m_late.toggle_is_reached(False)
+        self.assertEqual(m_late.deadline, past_end)
+        d_reopened = Task.get_all_in_one_timeline_data(project_id=proj.id)
+        r_late_reopened = next(r for r in d_reopened["tasks"] if r["id"] == f"milestone_{m_late.id}")
+        self.assertTrue(r_late_reopened["is_overdue_past"])
+        self.assertFalse(r_late_reopened["has_deadline_delay"])
+
 
 class TestGanntLTExportHttp(HttpCase):
 
@@ -2094,6 +2419,7 @@ class TestGanntLTExportHttp(HttpCase):
             long_sheet = z_long.read("xl/worksheets/sheet1.xml").decode("utf-8")
             self.assertIn(b"F8FAFC", z_long.read("xl/styles.xml"))
             self.assertRegex(long_sheet, r'<c r="[A-Z]+4" s="\d+"/>')
+
 
 
 

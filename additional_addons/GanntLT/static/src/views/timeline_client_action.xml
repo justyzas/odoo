@@ -19,9 +19,12 @@
                         <div class="toolbar_left d-flex align-items-center gap-2">
                             <!-- Project Filter Dropdown -->
                             <select class="form-select form-select-sm project_select" t-model="state.selectedProjectId" t-on-change="onProjectChange">
+                                <option value="active" t-att-selected="('' + state.selectedProjectId) === 'active'">Visi aktyvūs projektai</option>
                                 <option value="0" t-att-selected="('' + state.selectedProjectId) === '0'">Visi projektai</option>
                                 <option value="overdue" t-att-selected="('' + state.selectedProjectId) === 'overdue'">🔥 Vėluojantys projektai</option>
+                                <option t-if="state.hasPurchase" value="only_po" t-att-selected="('' + state.selectedProjectId) === 'only_po'">📦 Visi pirkimo užsakymai (PO)</option>
                                 <option t-if="state.hasMrp" value="only_mo" t-att-selected="('' + state.selectedProjectId) === 'only_mo'">⚙️ Visi gamybos užsakymai (MO)</option>
+                                <option t-if="state.hasDelivery" value="only_delivery" t-att-selected="('' + state.selectedProjectId) === 'only_delivery'">🚚 Visi pristatymai (DO)</option>
                                 <t t-foreach="state.projects" t-as="p" t-key="p.id">
                                     <option t-att-value="'' + p.id" t-att-selected="('' + state.selectedProjectId) === ('' + p.id)" t-esc="p.name"/>
                                 </t>
@@ -161,6 +164,9 @@
                                 </button>
                                 <button class="btn btn-secondary" t-on-click="resetView" title="Atstatyti į pradinį vaizdą (0%, suskleista, centruota į šiandien) / Reset View">
                                     <i class="fa fa-refresh me-1"/> Pradinis vaizdas
+                                </button>
+                                <button t-att-class="state.zoomLevel === 20 ? 'btn btn-primary' : 'btn btn-secondary'" t-on-click="zoomToDays" title="Priartinti prie dienų rodinio (20%) / Days View">
+                                    <i class="fa fa-calendar me-1"/> Dienos
                                 </button>
                             </div>
 
