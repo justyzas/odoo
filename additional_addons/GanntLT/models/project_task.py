@@ -350,7 +350,9 @@ class ProjectTask(models.Model):
 
     @api.depends_context("uid")
     def _compute_can_edit_gannt_dates(self):
-        can_edit = self._has_edit_rights()
+        # Non-Gantt users (GanntLT = No) keep standard Odoo editability on task forms;
+        # GanntLT read-only tiers (Can View / Can Track Time) are locked unless Can Edit.
+        can_edit = self._has_edit_rights() or not self._has_view_rights()
         for rec in self:
             rec.can_edit_gannt_dates = can_edit
 
@@ -1467,14 +1469,9 @@ class ProjectTask(models.Model):
         if not is_trusted:
             if any(f in vals for f in _APPROVAL_LOCK_FIELDS):
                 raise AccessError(_("Patvirtinimo istorijos ir bazinio plano laukų tiesiogiai keisti negalima."))
-            if any(f in vals for f in _SCHEDULE_EDIT_FIELDS):
+            if self._has_view_rights() and any(f in vals for f in _SCHEDULE_EDIT_FIELDS):
                 self._check_gannt_lt_edit_access()
             if any(f in vals for f in _TIMER_STATE_FIELDS):
-                self._check_gannt_lt_timer_access()
-            if "state" in vals and (
-                vals.get("state") in ("03_approved", "1_done", "1_canceled")
-                or any(rec.state in ("03_approved", "1_done", "1_canceled") for rec in self)
-            ):
                 self._check_gannt_lt_timer_access()
 
         user_tz = get_user_tz(self.env)

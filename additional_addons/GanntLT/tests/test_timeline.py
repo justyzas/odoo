@@ -1425,16 +1425,48 @@ class TestGanntLTTimeline(TransactionCase):
             "state": "01_in_progress",
         })
 
-        # Tier 1: Can View blocked on schedule, timer, and terminal state writes
+        user_no_gantt = self._make_user(
+            "tier_no_gantt",
+            ["base.group_user", "project.group_project_manager"],
+        )
+        # Tier 0 (GanntLT = No): blocked from Gantt timeline & RPCs, but CAN edit all standard Odoo project/task fields & statuses
+        with self.assertRaises(AccessError):
+            self.env["project.task"].with_user(user_no_gantt).get_all_in_one_timeline_data(project_id=self.project.id)
+        with self.assertRaises(AccessError):
+            self.env["project.task"].with_user(user_no_gantt).save_timeline_batch_schedule([{
+                "id": f"task_{task.id}",
+                "start_date": "2026-07-07",
+                "end_date": "2026-07-11",
+            }])
+        self.assertTrue(task.with_user(user_no_gantt).can_edit_gannt_dates)
+        self.assertTrue(self.project.with_user(user_no_gantt).can_edit_gannt_dates)
+        task.with_user(user_no_gantt).write({
+            "date_deadline": "2026-07-12 17:00:00",
+            "allocated_hours": 12.0,
+            "state": "1_done",
+        })
+        self.assertEqual(task.state, "1_done")
+        task.with_user(user_no_gantt).write({"state": "01_in_progress"})
+        self.project.with_user(user_no_gantt).write({
+            "date_start": "2026-07-01",
+            "date": "2026-07-31",
+            "last_update_status": "on_track",
+        })
+        self.assertEqual(self.project.last_update_status, "on_track")
+
+        # Tier 1: Can View blocked on schedule and timer writes, but CAN mark standard Odoo task state Done/Approved
         for vals in (
             {"is_timer_running": True},
-            {"state": "03_approved"},
             {"planned_date_start": "2026-07-07 08:00:00"},
         ):
             with self.assertRaises(AccessError):
                 task.with_user(user_viewer).write(vals)
         task.with_user(user_viewer).write({"name": "Viewer Neutral Rename"})
         self.assertEqual(task.name, "Viewer Neutral Rename")
+        task.with_user(user_viewer).write({"state": "1_done"})
+        self.assertEqual(task.state, "1_done")
+        task.with_user(user_viewer).write({"state": "01_in_progress"})
+        self.assertEqual(task.state, "01_in_progress")
 
         # Tier 2: Can Track Time blocked on schedule and approval-lock writes
         for vals in (

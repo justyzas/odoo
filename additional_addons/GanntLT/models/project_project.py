@@ -45,7 +45,9 @@ class ProjectProject(models.Model):
 
     @api.depends_context("uid")
     def _compute_can_edit_gannt_dates(self):
-        can_edit = self.env["project.task"]._has_edit_rights()
+        task_env = self.env["project.task"]
+        # Non-Gantt users (GanntLT = No) keep standard Odoo editability on project forms.
+        can_edit = task_env._has_edit_rights() or not task_env._has_view_rights()
         for rec in self:
             rec.can_edit_gannt_dates = can_edit
 
@@ -115,8 +117,9 @@ class ProjectProject(models.Model):
         is_auto_finish = bool(self.env.context.get("gannt_project_auto_finish"))
         was_done = {rec.id: rec._is_project_completed() for rec in self} if not is_auto_finish else {}
 
-        if not is_auto_finish and any(k in vals for k in ("date_start", "date", "date_deadline")):
-            self.env["project.task"]._check_gannt_lt_edit_access()
+        task_env = self.env["project.task"]
+        if not is_auto_finish and task_env._has_view_rights() and any(k in vals for k in ("date_start", "date", "date_deadline")):
+            task_env._check_gannt_lt_edit_access()
 
         if not is_auto_finish:
             for rec in self:
